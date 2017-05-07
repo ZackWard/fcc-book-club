@@ -1,0 +1,69 @@
+{
+  "name": "fcc-book-club",
+  "version": "0.0.1",
+  "description": "FCC Project: Book Trading Club",
+  "main": "index.js",
+  "scripts": {
+    "test": "tsc&set NODE_ENV=testing&mocha",
+    "dev": "start \"Sass\" node-sass -w -o public src/client/sass/styles.scss & start \"Webpack\" webpack --watch & start \"Typescript\" tsc --watch & nodemon ./build/book-club-server.js",
+    "build:sass": "node-sass -w -o public src/client/sass/styles.scss",
+    "build:webpack": "webpack --watch",
+    "build:tsc": "tsc --watch",
+    "server": "nodemon ./build/book-club-server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ZackWard/fcc-book-club.git"
+  },
+  "author": "Zack Ward",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ZackWard/fcc-book-club/issues"
+  },
+  "homepage": "https://github.com/ZackWard/fcc-book-club#readme",
+  "dependencies": {
+    "bcrypt": "^1.0.2",
+    "body-parser": "^1.17.1",
+    "connect-session-sequelize": "^4.1.0",
+    "consolidate": "^0.14.5",
+    "csurf": "^1.9.0",
+    "dotenv": "^4.0.0",
+    "express": "^4.15.2",
+    "express-session": "^1.15.2",
+    "helmet": "^3.5.0",
+    "jquery": "^3.2.1",
+    "materialize-css": "^0.98.0",
+    "mustache": "^2.3.0",
+    "sequelize": "^3.30.3",
+    "sqlite": "^2.5.0",
+    "vue": "^2.2.2",
+    "vue-router": "^2.3.0",
+    "vue-template-compiler": "^2.2.2",
+    "vuex": "^2.2.1",
+    "xss-filters": "^1.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "^7.0.8",
+    "@types/sequelize": "^4.0.49",
+    "babel-core": "^6.23.1",
+    "babel-loader": "^6.4.0",
+    "babel-preset-es2015": "^6.22.0",
+    "chai": "^3.5.0",
+    "chai-http": "^3.0.0",
+    "cookie": "^0.3.1",
+    "cookie-signature": "^1.0.6",
+    "css-loader": "^0.27.1",
+    "extract-text-webpack-plugin": "^2.1.0",
+    "file-loader": "^0.10.1",
+    "gulp": "^3.9.1",
+    "gulp-nodemon": "^2.2.1",
+    "gulp-sass": "^3.1.0",
+    "gulp-typescript": "^3.1.6",
+    "mocha": "^3.2.0",
+    "node-sass": "^4.5.0",
+    "resolve-url-loader": "^2.0.2",
+    "sass-loader": "^6.0.3",
+    "style-loader": "^0.13.2",
+    "vue-loader": "^11.1.4"
+  }
+}

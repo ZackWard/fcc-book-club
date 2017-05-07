@@ -1,1 +1,6 @@
 node_modules/
+public/fonts/
+.vscode/
+.env
+build/bookclub.db
+build/bookclub.test.db
