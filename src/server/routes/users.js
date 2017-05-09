@@ -59,19 +59,6 @@ export function createUser(req, res) {
     .catch(err => {
         return res.status(500).json({error: "Error"});
     });
-
-    // bcrypt.hash(String(req.body.password), saltRounds, function (err, hash) {
-    //     // TODO handle error
-    //     newUser.password = hash;
-    //     models.User.findOrCreate({where: {username: newUser.username}, defaults: newUser }).then(function ([user, created]) {
-    //         if (!created) {
-    //             res.status(403).json({error: {message: "User already exists"}});
-    //         } else {
-    //             res.json({message: "Created new user"});
-    //             req.session.user = user.username;
-    //         }
-    //     });
-    // });
 };
 
 export function getUser(req, res) {

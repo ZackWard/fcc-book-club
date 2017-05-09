@@ -19,15 +19,12 @@ function createBook(req, res) {
     let getBookPromise = models.Book.findOrCreate({ where: { google_id: req.body.id }, defaults: defaultBook });
     Promise.all([getUserPromise, getBookPromise])
         .then(([user, [book, created]]) => {
-        console.log("Got user and book!");
-        console.log("Created: " + created);
         let newCopy = models.BookCopy.build({ available: true });
         newCopy.setUser(user, { save: false });
         newCopy.setBook(book, { save: false });
         return newCopy.save();
     })
         .then(copy => {
-        console.log("Added book to user.");
         return res.json({ message: "Added book!", data: copy });
     })
         .catch(error => console.log(error));
@@ -49,7 +46,7 @@ function getBooks(req, res) {
             attributes: ['title', 'subtitle', 'authors', 'description', 'image'],
         }
     ];
-    if (String(req.query.includeRequests) == "true") {
+    if (req.query.includeRequests) {
         included.push({
             model: models.LoanRequest
         });
@@ -69,29 +66,55 @@ function getBooks(req, res) {
                 available: book.available,
                 owner: book.user.username,
             };
-            transformedBook.requests = (transformedBook.owner == req.session.user) ? "Owner" : "Not Owner";
+            if (req.query.includeRequests) {
+                transformedBook.requests = (transformedBook.owner == req.session.user) ? getOwnerRequests(book.loanrequests) : getNonOwnerRequests(book.loanrequests);
+            }
             return transformedBook;
         });
         return res.json(results);
     });
+    function getOwnerRequests(requests) {
+        if (!Array.isArray(requests))
+            return [];
+        return ['Owner'];
+    }
+    function getNonOwnerRequests(requests) {
+        if (!Array.isArray(requests))
+            return 0;
+        return requests.reduce((acc, request) => acc + 1, 0);
+    }
 }
 exports.getBooks = getBooks;
+;
+function editBook(req, res) {
+    if (!req.session.user) {
+        return res.status(401).json({ error: "You must be logged in to edit a book" });
+    }
+    models.BookCopy.findOne({ where: { id: req.params.bookId } })
+        .then(book => {
+        book.available = Boolean(req.body.available);
+        return book.save();
+    })
+        .then(savedBook => {
+        return res.json(savedBook);
+    })
+        .catch(err => res.status(404).json({ error: "Book not found" }));
+}
+exports.editBook = editBook;
 ;
 function deleteBook(req, res) {
     models.BookCopy.findOne({ where: { id: req.params.bookId }, include: [{ model: models.User, attributes: ['username'] }] })
         .then(book => {
-        console.log("Deleting a book");
-        console.log(JSON.stringify(book));
         // Only delete the book if the currently logged in user is the owner
         if (req.session.user === book.user.username) {
-            return book.destroy();
+            console.log("User owns the book. Deleting it.");
+            return book.destroy().then(() => res.json({ message: "Book deleted" }));
         }
         else {
-            return Promise.reject(new Error("You cannot delete a book that you do not own."));
+            return res.status(401).json({ error: "You do not have permission to delete this book." });
         }
     })
-        .then(() => res.json({ message: "Book deleted!" }))
-        .catch(error => res.status(500).json({ error: error.toString() }));
+        .catch(error => res.status(404).json({ error: "Book not found." }));
 }
 exports.deleteBook = deleteBook;
 ;
