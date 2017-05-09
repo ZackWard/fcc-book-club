@@ -76,75 +76,140 @@ describe("API Integration Tests", function () {
             password: 'zack2'
         };
 
-        it("Should create a user if given valid input", function (done) {
-            agent.post('/api/users').send(userData)
-            .then(res => {
-                expect(res).to.have.status(200);
-                expect(res).to.be.json;
+        describe("When given a valid username and password", function () {
+
+            before(function makeRequest(done) {
+                agent.post('/api/users').send(userData)
+                .then(res => {
+                    this.res = res;
+                    done();
+                })
+                .catch(error => done(new Error(error)));
+            });
+
+            it("Should return a status 200", function (done) {
+                expect(this.res).to.have.status(200);
                 done();
-            })
-            .catch(error => done(new Error(error)));
+            });
+            
+            it("Should return a JSON object", function (done) {
+                expect(this.res).to.be.json;
+                done();
+            });
+
         });
 
-        it("Shouldn't allow duplicate usernames", function (done) {
-            chai.request(server).post('/api/users').send(userData)
-            .then(res => done(new Error("We should have received an error!")))
-            .catch(({ response }) => {
-                expect(response).to.have.status(403);
-                expect(response).to.be.json;
-                done();
+        describe("When attempting to register a username that already exists", function () {
+
+            before(function makeRequest(done) {
+                chai.request(server).post('/api/users').send(userData)
+                .then(res => {
+                    this.res = res;
+                    done();
+                })
+                .catch(({ response }) => {
+                    this.res = response;
+                    done();
+                });
+            });
+
+            it("Should return a status 403 Forbidden", function () {
+                expect(this.res).to.have.status(403);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
             });
         });
     });
 
     describe("Logout", function () {
-        it("Should log the current user off", function (done) {
+
+        before(function makeRequest(done) {
             agent.get('/api/users/logout')
             .then(res => {
-                expect(res).to.be.status(200);
-                expect(res).to.be.json;
-                expect(res.header['set-cookie']).to.equal(undefined);
+                this.res = res;
                 done();
             })
-            .catch(error => done(error));
+            .catch(err => done(err));
+        });
+
+        it("Should return a status 200", function () {
+            expect(this.res).to.be.status(200);
+        });
+
+        it("Should return a JSON object", function () {
+            expect(this.res).to.be.json;
+        });
+
+        it("Should not return a cookie", function () {
+            expect(this.res.header['set-cookie']).to.be.equal(undefined);
         });
     });
 
     describe("Login", function () {
 
-        it("Should return an error when given an invalid username and/or password", function (done) {
+        describe("When given an invalid username and/or password", function () {
+
             let payload = {username: "zack2", password: "incorrect"};
-            chai.request(server).post('/api/users/login').send(payload)
-            .then(res => {
-                done(new Error("Login with incorrect username/password returned positive response"));
-            })
-            .catch(({ response }) => {                    
-                expect(response).to.be.status(400);
-                done();
+
+            before(function makeRequest(done) {
+                chai.request(server).post('/api/users/login').send(payload)
+                .then(res => {
+                    this.res = res;
+                    done();
+                })
+                .catch(({ response }) => {
+                    this.res = response;
+                    done();
+                });
+            });
+
+            it("Should return a status 400", function () {
+                expect(this.res).to.have.a.status(400);
             });
         });
 
-        it("Should log us in when provided with a valid username and password", function (done) {
+        describe("When provided with a valid username and password", function () {
+
             let payload = {username: "zack2", password: "zack2"};
-            agent.post('/api/users/login').send(payload)
-            .then(res => {
-                expect(res).to.be.status(200);
-                expect(res).to.have.a.cookie('connect.sid');
 
-                // Check the session on the server and make sure that the username is correct
-                let cookies = cookie.parse(String(res.header['set-cookie']));
+            before(function makeRequest(done) {
+                // Use the chai-http agent, so that cookies will be preserved for future requests
+                agent.post('/api/users/login').send(payload)
+                .then(res => {
+                    this.res = res;
+                    done();
+                })
+                .catch(({ response }) => {
+                    this.res = response;
+                    done();
+                });
+            });
+
+            it("Should respond with a status 200", function () {
+                expect(this.res).to.have.a.status(200);
+            });
+
+            it("Should have a cookie with the key: connect.sid", function () {
+                expect(this.res).to.have.a.cookie('connect.sid');
+            });
+
+            it("Should be a cookie that we can unsign with our cookie secret", function () {
+                let cookies = cookie.parse(String(this.res.header['set-cookie']));
                 let sid = cookies['connect.sid'].slice(2);
-                let unsignedSid = signature.unsign(sid, config.cookieSecret);
-                expect(unsignedSid).not.to.be.false;
+                this.sessionId = signature.unsign(sid, config.cookieSecret);
+                expect(this.sessionId).not.to.be.false;
+            });
 
-                session.get(unsignedSid, function (error, ses) {
+            it("Should set the username in our session database to the correct username", function (done) {
+                session.get(this.sessionId, function (error, ses) {
                     if (error) return done(error);
                     if (ses == null) return done(new Error("No session found"));
                     expect(ses.user).to.equal(payload.username);
                     done();
                 });
-            })
-            .catch(error => done(error));
+            });
         });
     });
 
@@ -281,7 +346,12 @@ describe("API Integration Tests", function () {
 
     describe("Make a new loan request", function () {
 
-        it("Should create a new Loan Request");
+        it("Should return a 401 unauthorized status for an unauthenticated user");
+
+        it("Should return an error when an authenticated user tries to request a book that they own");
+        
+        it("Should create a new Loan Request for an authenticated user");
+
 
     });
 
