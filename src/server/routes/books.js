@@ -94,13 +94,14 @@ export function editBook (req, res) {
     if (!req.session.user) {
         return res.status(401).json({error: "You must be logged in to edit a book"});
     }
-    models.BookCopy.findOne({where: {id: req.params.bookId}})
+    models.BookCopy.findOne({where: {id: req.params.bookId}, include: [{ model: models.User, attributes: ['username'] }]})
     .then(book => {
-        book.available = Boolean(req.body.available);
-        return book.save();
-    })
-    .then( savedBook => {
-        return res.json(savedBook);
+        if (req.session.user != book.user.username) {
+            return res.status(401).json({error: "You do not have permission to edit that book."});
+        } else {
+            book.available = Boolean(req.body.available);
+            return book.save().then(savedBook => res.json(savedBook));
+        }
     })
     .catch(err => res.status(404).json({error: "Book not found"}));
 };
