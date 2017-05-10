@@ -89,7 +89,7 @@ module.exports = {
 
             $.ajax({
                 url: window.location.protocol + "//" + window.location.host + "/api/users/" + this.$store.state.loggedIn,
-                method: "PUT",
+                method: "PATCH",
                 contentType: "application/json",
                 data: JSON.stringify(payload),
                 dataType: "json",
