@@ -127,13 +127,8 @@ describe("API Integration Tests", function () {
 
     describe("Logout", function () {
 
-        before(function makeRequest(done) {
-            agent.get('/api/users/logout')
-            .then(res => {
-                this.res = res;
-                done();
-            })
-            .catch(err => done(err));
+        before(function () {
+            return makeRequest('get', '/api/users/logout', true, false).then(res => this.res = res);
         });
 
         it("Should return a status 200", function () {
@@ -155,16 +150,8 @@ describe("API Integration Tests", function () {
 
             let payload = {username: "zack2", password: "incorrect"};
 
-            before(function makeRequest(done) {
-                chai.request(server).post('/api/users/login').send(payload)
-                .then(res => {
-                    this.res = res;
-                    done();
-                })
-                .catch(({ response }) => {
-                    this.res = response;
-                    done();
-                });
+            before(function () {
+                return makeRequest('post', '/api/users/login', false, payload).then(res => this.res = res);
             });
 
             it("Should return a status 400", function () {
@@ -176,17 +163,9 @@ describe("API Integration Tests", function () {
 
             let payload = {username: "zack2", password: "zack2"};
 
-            before(function makeRequest(done) {
+            before(function () {
                 // Use the chai-http agent, so that cookies will be preserved for future requests
-                agent.post('/api/users/login').send(payload)
-                .then(res => {
-                    this.res = res;
-                    done();
-                })
-                .catch(({ response }) => {
-                    this.res = response;
-                    done();
-                });
+                return makeRequest('post', '/api/users/login', true, payload).then(res => this.res = res);
             });
 
             it("Should respond with a status 200", function () {
@@ -365,80 +344,170 @@ describe("API Integration Tests", function () {
 
     describe("Retrieve a list of books", function () {
 
-        it("Should return a list of all books", function (done) {
-            agent.get('/api/books')
-            .then(res => {
-                expect(res).to.be.status(200);
-                expect(res).to.be.json;
-                expect(Array.isArray(res.body)).to.be.true;
-                expect(res.body).to.be.lengthOf(7);
-                done();
-            })
-            .catch(err => done(err));
+        describe("As an unauthenticated user", function () {
+
+            before(function () {
+                return makeRequest('get', '/api/books', false, false).then(res => this.res = res);
+            });
+
+            it("Should return a status 200", function () {
+                expect(this.res).to.have.a.status(200);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should return an array", function () {
+                expect(Array.isArray(this.res.body)).to.be.true;
+            });
+
+            it("Should have 7 books in the array", function () {
+                expect(this.res.body).to.be.lengthOf(7);
+            });
         });
 
-        it("Should optionally return a list of books owned by a given user", function (done) {
-            agent.get('/api/books?owner=zack2')
-            .then(res => {
-                expect(res).to.be.status(200);
-                expect(res).to.be.json;
-                expect(Array.isArray(res.body)).to.be.true;
-                expect(res.body).to.be.lengthOf(1);
-                let incorrectEntries = res.body.filter(book => book.owner != "zack2");
+        describe("When the owner=zack2 query parameter is passed", function () {
+
+            before(function () {
+                return makeRequest('get', '/api/books?owner=zack2', true, false).then(res => this.res = res);
+            });
+
+            it("Should return a status 200 response", function () {
+                expect(this.res).to.have.a.status(200);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should return an array", function () {
+                expect(Array.isArray(this.res.body)).to.be.true;
+            });
+
+            it("Should have 1 book in the array", function () {
+                expect(this.res.body).to.be.lengthOf(1);
+            });
+
+            it("Should not return books owned by anybody other than zack2", function () {
+                let incorrectEntries = this.res.body.filter(book => book.owner != "zack2");
                 expect(incorrectEntries).to.have.lengthOf(0);
-                done();
-            })
-            .catch(err => done(err));
+            });
         });
 
-        it("Should optionally include loan request data. Logged in users get details, others get request count.", function (done) {
-            agent.get('/api/books?includeRequests=true')
-            .then(res => {
-                expect(res).to.be.status(200);
-                expect(res).to.be.json;
-                expect(Array.isArray(res.body)).to.be.true;
-                res.body.map(book => {
-                    // I know that the chai http agent has a cookie for logged in user zack2. 
-                    // If the book is owned by zack2, the requests field should be an array. If not, it should be a number
+        describe("When the includeRequests=true query paramater is passed", function () {
+
+            before(function () {
+                return makeRequest('get', '/api/books?includeRequests=true', true, false).then(res => this.res = res);
+            });
+
+            it("Should return a 200 status", function () {
+                expect(this.res).to.be.status(200);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should return an array of books", function () {
+                expect(Array.isArray(this.res.body)).to.be.true;
+            });
+
+            it("Should include a requests element, that is either an array or a number, in every array item.", function () {
+                this.res.body.forEach(book => {
                     if (book.owner == "zack2") {
                         expect(Array.isArray(book.requests)).to.be.true;
                     } else {
-                        expect(book.requests).to.be.a("number");
+                        expect(book.requests).to.be.a('number');
                     }
+
                 });
-                done();
-            })
-            .catch(err => done(err));
+            });
         });
     });    
 
     describe("Make a new loan request", function () {
 
-        it("Should return a 401 unauthorized status for an unauthenticated user");
+        describe('As an unauthenticated user', function () {
 
-        it("Should return an error when an authenticated user tries to request a book that they own");
-        
-        it("Should create a new Loan Request for an authenticated user");
+            it("Shuld return a 401 status");
 
+        });
 
+        describe("As an authenticated user, when requesting a book that the user owns", function () {
+
+            it("Should return an error");
+
+        });
+
+        describe("As an authenticated user, when requesting a book that another user owns", function () {
+
+            it("Should create a new request");
+
+        });
     });
 
     describe("Get a list of loan requests for a given book", function () {
 
-        it("Should return a list of book requests");
+        describe("As an unauthenticated user", function () {
 
+            it("Should return a number");
+
+        });
+
+        describe("As an authenticated user that doesn't own the book", function () {
+
+            it("Should return a number");
+
+        });
+
+        describe("As an authenticated user that owns the book", function () {
+
+            it("Should return an array of request objects");
+
+        });
     });
 
     describe("Update a loan request", function () {
 
-        it("Should update a loan request");
+        describe("As an unauthenticated user", function () {
 
+            it("Should return an error");
+
+        });
+
+        describe("As an authenticated user that doesn't own the request", function () {
+
+            it("Should return an error");
+
+        });
+
+        describe("As an authenticated user that owns the request", function () {
+
+            it("Should modify the loan request");
+
+        });
     });
 
     describe("Delete/cancel a book request", function () {
 
-        it("Should delete a loan request");
+        describe("As an unauthenticated user", function () {
 
+            it("Should return an error");
+
+        });
+
+        describe("As an authenticated user that doesn't own the request", function () {
+
+            it("Should return an error");
+
+        });
+
+        describe("As an authenticated user that owns the request", function () {
+
+            it("Should delete/cancel the request");
+
+        });
     });
 
     describe("Delete a book", function () {
@@ -456,7 +525,13 @@ describe("API Integration Tests", function () {
 
         describe("As an authenticated user who doesn't own the book", function () {
 
-            it("Should return a status 401 response");
+            before(function () {
+                return makeRequest('delete', '/api/books/1', true, false).then(res => this.res = res);
+            });
+            
+            it("Should return a status 401 response", function () {
+                expect(this.res).to.have.a.status(401);
+            });
         });
 
         describe("As an authenticated user who owns the book", function () {
@@ -469,7 +544,12 @@ describe("API Integration Tests", function () {
                 expect(this.res).to.have.status(200);
             });
 
-            it("Should actually remove the book from the database");
+            it("Should actually remove the book from the database", function () {
+                db.BookCopy.findOne({ where: {id: createdBookID} })
+                .then(book => {
+                    expect(book).to.be.null;
+                });
+            });
         });
     });
 });
