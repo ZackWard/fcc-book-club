@@ -16,6 +16,21 @@ let session = app.session;
 // We'll use an agent so that when we login, cookies will be saved and reused with the next request
 let agent = chai.request.agent(server);
 
+// We'll use this helper function to make our http calls to the API
+function makeRequest(method, url, useAgent = false, payload = false) {
+    return new Promise(function (resolve, reject) {
+        let target = ( useAgent ? agent : chai.request(server) );
+        let request = ( payload ? target[method](url).send(payload).type('json') : target[method](url).type('json') );
+        request
+        .then(res => {
+            resolve(res);
+        })
+        .catch(({ response }) => {
+            resolve(response)
+        });
+    });
+};
+
 
 describe("API Integration Tests", function () {
 
@@ -78,13 +93,8 @@ describe("API Integration Tests", function () {
 
         describe("When given a valid username and password", function () {
 
-            before(function makeRequest(done) {
-                agent.post('/api/users').send(userData)
-                .then(res => {
-                    this.res = res;
-                    done();
-                })
-                .catch(error => done(new Error(error)));
+            before(function () {
+                return makeRequest('post', '/api/users', true, userData).then(res => this.res = res);
             });
 
             it("Should return a status 200", function (done) {
@@ -101,16 +111,8 @@ describe("API Integration Tests", function () {
 
         describe("When attempting to register a username that already exists", function () {
 
-            before(function makeRequest(done) {
-                chai.request(server).post('/api/users').send(userData)
-                .then(res => {
-                    this.res = res;
-                    done();
-                })
-                .catch(({ response }) => {
-                    this.res = response;
-                    done();
-                });
+            before(function () {
+                return makeRequest('post', '/api/users', false, userData).then(res => this.res = res);
             });
 
             it("Should return a status 403 Forbidden", function () {
@@ -215,35 +217,34 @@ describe("API Integration Tests", function () {
 
     describe("Update a user's profile and password ", function () {
 
-        let updateData = {
-            first_name: "Zachary",
-            last_name: "Ward",
-            password: "zack3",
-            city: "Monte Vista",
-            state: "Colorado"
-        };
+        let updateData = { first_name: "Zachary", last_name: "Ward", password: "zack3", city: "Monte Vista", state: "Colorado" };
 
-        it("Should update a user", function (done) {
-            // Make the request using the agent that we logged in with earlier, in order to authenticate this request
-            agent.patch('/api/users/zack2').send(updateData)
-            .then(res => {
-                expect(res).to.have.status(200);
-                done();
-            })
-            .catch(error => done(error));
-        });
+        describe("When authenticated, and attemtping to update your own account", function () {
 
-        it("Should reject attempts to update any user that isn't logged in", function (done) {
-            agent.patch('/api/users/zack').send(updateData)
-            .then(res => done(new Error("Attempting to update a user that isn't logged in returned a status 200")))
-            .catch(({ response }) => {
-                expect(response).to.be.status(403);
-                expect(response).to.be.json;
-                done();
+            before(function () {
+                return makeRequest('patch', '/api/users/zack2', true, updateData).then(res => this.res = res);
+            });
+
+            it("Should return a status 200", function () {
+                expect(this.res).to.have.a.status(200);
             });
         });
 
+        describe("When attempting to update an account that you aren't authenticated on", function () {
 
+            before(function () {
+                // agent is authenticated on zack2, attempting to update account zack
+                return makeRequest('patch', '/api/users/zack', true, updateData).then(res => this.res = res);
+            });
+
+            it('Should return a status 403 unauthorized response', function () {
+                expect(this.res).to.have.a.status(403);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+        });
     });
 
     describe("Create a new book", function () {
@@ -257,42 +258,109 @@ describe("API Integration Tests", function () {
             image: "http://www.zackward.net/test.jpg"
         };
 
-        it("Should create a book", function (done) {
-            agent.post('/api/books').send(newBook)
-            .then(res => {
-                expect(res).to.have.a.status(200);
-                expect(res).to.be.json;
-                expect(res.body.data.available).to.be.true;
-                createdBookID = Number(res.body.data.id);
-                done();
-            })
-            .catch(error => done(error));
+        describe('When not authenticated', function () {
+
+            before(function () {
+                return makeRequest('post', '/api/books', false, newBook).then(res => this.res = res);
+            });
+
+            it('Should return a status 403', function () {
+                expect(this.res).to.have.status(403);
+            });
+
+            it('Should return a JSON object', function () {
+                expect(this.res).to.be.json;
+            });
+        });
+
+        describe('When authenticated', function () {
+
+            before(function () {
+                return makeRequest('post', '/api/books', true, newBook).then(res => this.res = res);
+            });
+
+            it('Should return a status 200', function () {
+                expect(this.res).to.have.status(200);
+            });
+
+            it('Should return a JSON object', function () {
+                expect(this.res).to.be.json;
+            });
+
+            it('Should have a body field', function () {
+                expect(this.res.body).to.exist;
+            });
+
+            it('Should have a body.data field', function () {
+                expect(this.res.body.data).to.exist;
+            });
+
+            it('Should have a body.data.id field', function () {
+                expect(this.res.body.data.id).to.exist;
+            });
+
+            it('Should have a numeric value in the body.data.id field', function () {
+                expect(this.res.body.data.id).to.be.a('number');
+                // We'll save this ID, so that we can use it later to edit the book
+                createdBookID = Number(this.res.body.data.id);
+            });
+
+            it('Should have a body.data.available field', function () {
+                expect(this.res.body.data.available).to.exist;
+            });
+
+            it('Should have a value of true in body.data.available field', function () {
+                expect(this.res.body.data.available).to.be.true;
+            });
         });
     });
 
     describe("Update a book", function () {
 
-        it("Should update a book for authenticated users", function (done) {
-            // Use the agent that has authenticated for this request
-            agent.patch('/api/books/' + createdBookID).send({available: false})
-            .then(res => {
-                expect(res).to.have.status(200);
-                expect(res).to.be.json;
-                expect(res.body.available).to.be.false;
-                done()
-            })
-            .catch(err => done(err));
-        });
+        describe("As an unauthenticated user", function () {
 
-        it("Should return an error for unathenticated users", function (done) {
-            chai.request(server).patch('/api/books/' + createdBookID).send({available: true})
-            .then(res => done(new Error("We should not have received a positive response when attempting to edit a book while unauthenticated")))
-            .catch(({ response }) => {
-                expect(response).to.have.status(401);
-                done();
+            before(function () {
+                return makeRequest('patch', '/api/books/' + createdBookID, false, {available: false}).then(res => this.res = res);
+            });
+
+            it("Should return a status 401", function () {
+                expect(this.res).to.have.status(401);
             });
         });
 
+        describe("As an authenticated user attempting to update a book that I do not own", function () {
+            
+            before(function () {
+                return makeRequest('patch', '/api/books/1', true, {available: false}).then(res => this.res = res);
+            });
+
+            it("Should return a status 401 response", function () {
+                expect(this.res).to.have.status(401);
+            });
+        });
+
+        describe("As an authenticated user attempting to update a book that I own", function () {
+
+            before(function () {
+                return makeRequest('patch', '/api/books/' + createdBookID, true, {available: false}).then(res => this.res = res);
+            });
+
+            it("Should respond with a status 200", function () {
+                expect(this.res).to.have.status(200);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have a body.available field", function () {
+                expect(this.res.body.available).to.exist;
+            });
+
+            it("Should have the body.available field set to false", function () {
+                expect(this.res.body.available).to.be.false;
+            });
+        });
     });
 
     describe("Retrieve a list of books", function () {
@@ -375,23 +443,33 @@ describe("API Integration Tests", function () {
 
     describe("Delete a book", function () {
 
-        it("Should return an error for an unauthenticated delete request", function (done) {
-            chai.request(server).delete('/api/books/' + createdBookID).type('json')
-            .then(res => done(new Error("We should receieve an error when trying to delete a book if we aren't authenticated, or if we don't own the book!")))
-            .catch(({ response }) => {
-                expect(response).has.a.status(401);
-                done();
+        describe("As an unauthenticated user", function () {
+
+            before(function () {
+                return makeRequest('delete', '/api/books/' + createdBookID, false, false).then(res => this.res = res);
+            });
+
+            it("Should return a status 401 response", function () {
+                expect(this.res).to.have.status(401);
             });
         });
 
-        it("Should delete a book", function (done) {
-            agent.delete('/api/books/' + createdBookID).type('json')
-            .then(res => {
-                done();
-            })
-            .catch(err => done(err));
+        describe("As an authenticated user who doesn't own the book", function () {
+
+            it("Should return a status 401 response");
         });
 
+        describe("As an authenticated user who owns the book", function () {
+
+            before(function () {
+                return makeRequest('delete', '/api/books/' + createdBookID, true).then(res => this.res = res);
+            });
+
+            it("Should return a 200 status response", function () {
+                expect(this.res).to.have.status(200);
+            });
+
+            it("Should actually remove the book from the database");
+        });
     });
-    
 });
