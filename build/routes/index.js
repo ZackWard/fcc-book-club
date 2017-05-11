@@ -5,6 +5,7 @@ const express = require("express");
 const utils = require("./utils");
 const userRoutes = require("./users");
 const bookRoutes = require("./books");
+const requestRoutes = require("./requests");
 const router = express.Router();
 const rejectNonJSON = utils.rejectNonJSON;
 const parseJSON = bodyParser.json();
@@ -31,5 +32,10 @@ router.route('/api/books')
 router.route('/api/books/:bookId')
     .patch(rejectNonJSON, parseJSON, bookRoutes.editBook)
     .delete(rejectNonJSON, parseJSON, bookRoutes.deleteBook);
-// router.use('/api/books', bookRoutes);
+router.route('/api/books/:bookId/requests')
+    .get(rejectNonJSON, parseJSON, requestRoutes.getRequests)
+    .post(rejectNonJSON, parseJSON, requestRoutes.createRequest);
+router.route('/api/boooks/:bookId/requests/:requestId')
+    .patch(rejectNonJSON, parseJSON, requestRoutes.getRequests)
+    .delete(rejectNonJSON, parseJSON, requestRoutes.deleteRequest);
 exports.default = router;

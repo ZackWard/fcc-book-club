@@ -5,6 +5,7 @@ import * as utils from "./utils";
 
 import * as userRoutes from "./users";
 import * as bookRoutes from "./books";
+import * as requestRoutes from "./requests";
 
 const router = express.Router();
 const rejectNonJSON = utils.rejectNonJSON;
@@ -40,6 +41,12 @@ router.route('/api/books/:bookId')
     .patch(rejectNonJSON, parseJSON, bookRoutes.editBook)
     .delete(rejectNonJSON, parseJSON, bookRoutes.deleteBook);
 
-// router.use('/api/books', bookRoutes);
+router.route('/api/books/:bookId/requests')
+    .get(rejectNonJSON, parseJSON, requestRoutes.getRequests)
+    .post(rejectNonJSON, parseJSON, requestRoutes.createRequest);
+
+router.route('/api/boooks/:bookId/requests/:requestId')
+    .patch(rejectNonJSON, parseJSON, requestRoutes.getRequests)
+    .delete(rejectNonJSON, parseJSON, requestRoutes.deleteRequest);
 
 export default router;

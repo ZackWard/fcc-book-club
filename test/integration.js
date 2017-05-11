@@ -36,37 +36,45 @@ describe("API Integration Tests", function () {
 
     let createdBookID; // We'll store the ID when we create a book, that way we can edit it later
 
+    function makeBook(user, book) {
+        let newBook = db.BookCopy.build({available: true});
+        newBook.setBook(book, {save: false});
+        newBook.setUser(user, {save: false});
+        return newBook;
+    };
+
+    function buildRequest(status, bookCopy, user) {
+        let newRequest = db.LoanRequest.build({ status: status });
+        newRequest.setUser(user, { save: false });
+        newRequest.setBookCopy(bookCopy, { save: false });
+        return newRequest;
+    };
+
     function buildDatabase() {
+        let user1, user2, copy1, copy2, copy3;
         return new Promise(function (resolve, reject) {
             let user1p = db.User.create({username: "fakeuser1", password: "$2a$10$d/2xu830XZvcdWguJpIsXuu4xhrpBv7wU9JiTH1n3Ny00D/QAyiIq"});
             let user2p = db.User.create({username: "fakeuser2", password: "$2a$10$d/2xu830XZvcdWguJpIsXuu4xhrpBv7wU9JiTH1n3Ny00D/QAyiIq"});
-            let book1p = db.Book.create({title: "Book One"});
-            let book2p = db.Book.create({title: "Book Two"});
-            let book3p = db.Book.create({title: "Book Three"});
+            let book1p = db.Book.create({title: "Fake Book One"});
+            let book2p = db.Book.create({title: "Fake Book Two"});
+            let book3p = db.Book.create({title: "Fake Book Three"});
             Promise.all([user1p, user2p, book1p, book2p, book3p])
-            .then(([user1, user2, book1, book2, book3]) => {
-                let copy1 = db.BookCopy.build({available: true});
-                copy1.setBook(book1, {save: false});
-                copy1.setUser(user2, {save: false});
-                let copy2 = db.BookCopy.build({available: true});
-                copy2.setBook(book2, {save: false});
-                copy2.setUser(user1, {save: false});
-                let copy3 = db.BookCopy.build({available: true});
-                copy3.setBook(book3, {save: false});
-                copy3.setUser(user2, {save: false});
-                let copy4 = db.BookCopy.build({available: true});
-                copy4.setBook(book1, {save: false});
-                copy4.setUser(user1, {save: false});
-                let copy5 = db.BookCopy.build({available: true});
-                copy5.setBook(book2, {save: false});
-                copy5.setUser(user2, {save: false});
-                let copy6 = db.BookCopy.build({available: true});
-                copy6.setBook(book3, {save: false});
-                copy6.setUser(user1, {save: false});
-                return Promise.all([copy1.save(), copy2.save(), copy3.save(), copy4.save(), copy5.save(), copy6.save()]);
+            .then(([u1, u2, book1, book2, book3]) => {
+                user1 = u1;
+                user2 = u2;
+                copy1 = makeBook(user1, book1);
+                copy2 = makeBook(user1, book2);
+                copy3 = makeBook(user2, book3);
+                return Promise.all([copy1.save(), copy2.save(), copy3.save()]);
             })
-            .then(([copy1, copy2, copy3, copy4, copy5, copy6]) => {
-                console.log("Inserted a bunch of stuff into the database!");
+            .then(([copy1, copy2, copy3]) => {
+                let request1 = buildRequest('requested', copy1, user2);
+                let request2 = buildRequest('requested', copy2, user2);
+                let request3 = buildRequest('requested', copy3, user1);
+                return Promise.all([request1.save(), request2.save(), request3.save()]);
+            })
+            .then(([r1, r2, r3]) => {
+                console.log("Database set up");
                 resolve();
             })
             .catch(error => reject(error));
@@ -426,7 +434,15 @@ describe("API Integration Tests", function () {
         });
     });    
 
-    describe("Make a new loan request", function () {
+    describe.only("Make a new loan request", function () {
+
+        let payload = {
+
+        };
+
+        before(function () {
+            return makeRequest('post', '/api/books/1/requests', true, payload).then(res => this.res = res);
+        });
 
         describe('As an unauthenticated user', function () {
 

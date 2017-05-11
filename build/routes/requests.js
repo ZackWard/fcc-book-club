@@ -1,24 +1,27 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const express = require("express");
-const bodyParser = require("body-parser");
-const utils = require("./utils");
-let rejectNonJSON = utils.rejectNonJSON;
-let parseJSON = bodyParser.json();
-const router = express.Router();
-router.post('/', rejectNonJSON, parseJSON, function (req, res) {
-    console.log("-------------------------------------");
-    console.log(req.session.user);
-    console.log("-------------------------------------");
-    if (req.session.user == undefined) {
-        return res.status(401).json({ error: "You must be logged in to request a book." });
-    }
-    res.json({ message: "POST /api/requests" });
-});
-router.get('/:requestid', function (req, res) {
-    res.json({ message: "GET /api/requests/[request_id]" });
-});
-router.put('/:requestid', function (req, res) {
-    res.json({ message: "PUT /api/requests/[request_id]" });
-});
-exports.default = router;
+const models = require("../models");
+function createRequest(req, res) {
+    models.Book.findOne({ where: { id: Number(req.params.bookId) } })
+        .then(book => {
+        console.log(JSON.stringify(book));
+        res.json(book);
+    })
+        .catch(error => {
+        res.status(500).json(error);
+    });
+}
+exports.createRequest = createRequest;
+;
+function getRequests(req, res) {
+}
+exports.getRequests = getRequests;
+;
+function editRequest(req, res) {
+}
+exports.editRequest = editRequest;
+;
+function deleteRequest(req, res) {
+}
+exports.deleteRequest = deleteRequest;
+;
