@@ -35,6 +35,7 @@ function makeRequest(method, url, useAgent = false, payload = false) {
 describe("API Integration Tests", function () {
 
     let createdBookID; // We'll store the ID when we create a book, that way we can edit it later
+    let fixtures;
 
     function makeBook(user, book) {
         let newBook = db.BookCopy.build({available: true});
@@ -51,29 +52,29 @@ describe("API Integration Tests", function () {
     };
 
     function buildDatabase() {
-        let user1, user2, copy1, copy2, copy3;
         return new Promise(function (resolve, reject) {
             let user1p = db.User.create({username: "fakeuser1", password: "$2a$10$d/2xu830XZvcdWguJpIsXuu4xhrpBv7wU9JiTH1n3Ny00D/QAyiIq"});
             let user2p = db.User.create({username: "fakeuser2", password: "$2a$10$d/2xu830XZvcdWguJpIsXuu4xhrpBv7wU9JiTH1n3Ny00D/QAyiIq"});
+            let user3p = db.User.create({username: "fakeuser3", password: "$2a$10$d/2xu830XZvcdWguJpIsXuu4xhrpBv7wU9JiTH1n3Ny00D/QAyiIq"});
             let book1p = db.Book.create({title: "Fake Book One"});
             let book2p = db.Book.create({title: "Fake Book Two"});
             let book3p = db.Book.create({title: "Fake Book Three"});
-            Promise.all([user1p, user2p, book1p, book2p, book3p])
-            .then(([u1, u2, book1, book2, book3]) => {
-                user1 = u1;
-                user2 = u2;
-                copy1 = makeBook(user1, book1);
-                copy2 = makeBook(user1, book2);
-                copy3 = makeBook(user2, book3);
-                return Promise.all([copy1.save(), copy2.save(), copy3.save()]);
+            Promise.all([user1p, user2p, user3p, book1p, book2p, book3p])
+            .then(([user1, user2, user3, book1, book2, book3]) => {
+                fixtures = {user1, user2, user3, book1, book2, book3}
+                fixtures.copy1 = makeBook(fixtures.user1, fixtures.book1);
+                fixtures.copy2 = makeBook(fixtures.user1, fixtures.book2);
+                fixtures.copy3 = makeBook(fixtures.user2, fixtures.book3);
+                return Promise.all([fixtures.copy1.save(), fixtures.copy2.save(), fixtures.copy3.save()]);
             })
             .then(([copy1, copy2, copy3]) => {
-                let request1 = buildRequest('requested', copy1, user2);
-                let request2 = buildRequest('requested', copy2, user2);
-                let request3 = buildRequest('requested', copy3, user1);
-                return Promise.all([request1.save(), request2.save(), request3.save()]);
+                fixtures.request1 = buildRequest('requested', fixtures.copy1, fixtures.user2);
+                fixtures.request2 = buildRequest('requested', fixtures.copy2, fixtures.user2);
+                fixtures.request3 = buildRequest('requested', fixtures.copy3, fixtures.user1);
+                fixtures.request4 = buildRequest('requested', fixtures.copy3, fixtures.user3);
+                return Promise.all([fixtures.request1.save(), fixtures.request2.save(), fixtures.request3.save(), fixtures.request4.save()]);
             })
-            .then(([r1, r2, r3]) => {
+            .then(([r1, r2, r3, r4]) => {
                 console.log("Database set up");
                 resolve();
             })
@@ -105,14 +106,20 @@ describe("API Integration Tests", function () {
                 return makeRequest('post', '/api/users', true, userData).then(res => this.res = res);
             });
 
-            it("Should return a status 200", function (done) {
+            it("Should return a status 200", function () {
                 expect(this.res).to.have.status(200);
-                done();
             });
             
-            it("Should return a JSON object", function (done) {
+            it("Should return a JSON object", function () {
                 expect(this.res).to.be.json;
-                done();
+            });
+
+            it("Should actually create a new user in the database", function () {
+                return db.User.findOne({where: { username: userData.username } })
+                .then(user => {
+                    fixtures.newUser = user;
+                    expect(user).not.to.be.null;
+                });
             });
 
         });
@@ -231,6 +238,15 @@ describe("API Integration Tests", function () {
             it("Should return a JSON object", function () {
                 expect(this.res).to.be.json;
             });
+
+            it("Should actually change the user's information in the database", function () {
+                return fixtures.newUser.reload().then(() => {
+                    expect(fixtures.newUser.firstName).to.equal(updateData.first_name);
+                    expect(fixtures.newUser.lastName).to.equal(updateData.last_name);
+                    expect(fixtures.newUser.city).to.equal(updateData.city);
+                    expect(fixtures.newUser.state).to.equal(updateData.state);
+                });
+            });
         });
     });
 
@@ -263,6 +279,7 @@ describe("API Integration Tests", function () {
         describe('When authenticated', function () {
 
             before(function () {
+                // Use the agent, which is authenticated to the zack2 account
                 return makeRequest('post', '/api/books', true, newBook).then(res => this.res = res);
             });
 
@@ -298,6 +315,32 @@ describe("API Integration Tests", function () {
 
             it('Should have a value of true in body.data.available field', function () {
                 expect(this.res.body.data.available).to.be.true;
+            });
+
+            it("Should actually insert a new record into the database", function () {
+
+                let queryInclusions = [
+                    {
+                        model: db.User,
+                        where: {username: fixtures.newUser.username}
+                    },
+                    {
+                        model: db.Book,
+                        where: {
+                            title: newBook.title,
+                            subtitle: newBook.subtitle,
+                            authors: newBook.authors,
+                            description: newBook.description,
+                            image: newBook.image
+                        }
+                    }
+                ];
+
+                return db.BookCopy.findAll({include: queryInclusions}).then(result => {
+                    fixtures.newBook = result[0];
+                    expect(result).not.to.be.null;
+                    expect(result).to.be.lengthOf(1);
+                });
             });
         });
     });
@@ -370,8 +413,8 @@ describe("API Integration Tests", function () {
                 expect(Array.isArray(this.res.body)).to.be.true;
             });
 
-            it("Should have 7 books in the array", function () {
-                expect(this.res.body).to.be.lengthOf(7);
+            it("Should have 4 books in the array", function () {
+                expect(this.res.body).to.be.lengthOf(4);
             });
         });
 
@@ -434,32 +477,69 @@ describe("API Integration Tests", function () {
         });
     });    
 
-    describe.only("Make a new loan request", function () {
-
-        let payload = {
-
-        };
-
-        before(function () {
-            return makeRequest('post', '/api/books/1/requests', true, payload).then(res => this.res = res);
-        });
+    describe("Make a new loan request", function () {
 
         describe('As an unauthenticated user', function () {
 
-            it("Shuld return a 401 status");
+            before(function () {
+                return makeRequest('post', '/api/books/1/requests', false, false).then(res => this.res = res);
+            });
+
+            it("Shuld return a 401 status", function () {
+                expect(this.res).to.have.a.status(401);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
 
         });
 
         describe("As an authenticated user, when requesting a book that the user owns", function () {
 
-            it("Should return an error");
+            before(function () {
+                return makeRequest('post', '/api/books/' + createdBookID + '/requests', true, false).then(res => this.res = res);
+            });
+
+            it("Should return a 403 status response", function () {
+                expect(this.res).to.have.a.status(403);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have a message property", function () {
+                expect(this.res.body.message).to.exist;
+            });
+
+            it("Should respond with the message: You own this book, and so cannot request to borrow it.", function () {
+                expect(this.res.body.message).to.equal('You own this book, and so cannot request to borrow it.');
+            });
 
         });
 
         describe("As an authenticated user, when requesting a book that another user owns", function () {
 
-            it("Should create a new request");
+            before(function () {
+                return makeRequest('post', '/api/books/1/requests', true, false).then(res => this.res = res);
+            });
 
+            it("Should return a 200 status response", function () {
+                expect(this.res).to.have.a.status(200);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have a field called status", function () {
+                expect(this.res.body.status).to.exist;
+            });
+
+            it("Should have the string \"requested\" in the status field", function () {
+                expect(this.res.body.status).to.equal("requested");
+            });
         });
     });
 
@@ -467,42 +547,217 @@ describe("API Integration Tests", function () {
 
         describe("As an unauthenticated user", function () {
 
-            it("Should return a number");
+            // use fixtures.copy3
+            before(function () {
+                return makeRequest('get', '/api/books/' + fixtures.copy3.id + '/requests', false, false).then(res => this.res = res);
+            });
+
+            it("Should return a 200 response code", function () {
+                expect(this.res).to.have.a.status(200);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have a requests field", function () {
+                expect(this.res.body.requests).to.exist;
+            });
+
+            it("Should return a number in the requests field", function () {
+                expect(Number(this.res.body.requests)).to.be.a('number');
+            });
+
+            it("Should return the number 2", function () {
+                expect(Number(this.res.body.requests)).to.equal(2);
+            });
 
         });
 
         describe("As an authenticated user that doesn't own the book", function () {
 
-            it("Should return a number");
+            // use fixtures.copy3, use the authenticated agent
+            before(function () {
+                return makeRequest('get', '/api/books/' + fixtures.copy3.id + '/requests', true, false).then(res => this.res = res);
+            });
+
+            it("Should return a 200 response code", function () {
+                expect(this.res).to.have.a.status(200);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have a requests field", function () {
+                expect(this.res.body.requests).to.exist;
+            });
+
+            it("Should return a number in the requests field", function () {
+                expect(Number(this.res.body.requests)).to.be.a('number');
+            });
+
+            it("Should return the number 2", function () {
+                expect(Number(this.res.body.requests)).to.equal(2);
+            });
 
         });
 
         describe("As an authenticated user that owns the book", function () {
 
-            it("Should return an array of request objects");
+            before(function () {
+                // Insert a couple of requests into the database
+                fixtures.newRequest1 = db.LoanRequest.build({status: "requested"});
+                fixtures.newRequest1.setUser(fixtures.user1, {save: false});
+                fixtures.newRequest1.setBookCopy(fixtures.newBook, {save: false});
+                fixtures.newRequest2 = db.LoanRequest.build({status: "requested"});
+                fixtures.newRequest2.setUser(fixtures.user2, {save: false});
+                fixtures.newRequest2.setBookCopy(fixtures.newBook, {save: false});
+                return Promise.all([fixtures.newRequest1.save(), fixtures.newRequest2.save()])
+                .then(([r1, r2]) => {
+                    return makeRequest('get', '/api/books/' + fixtures.newBook.id + '/requests', true, false).then(res => this.res = res);
+                });
+            });
+            
+            it("Should return a 200 status response", function () {
+                expect(this.res).to.have.a.status(200);
+            });
 
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should return an array", function () {
+                expect(Array.isArray(this.res.body.requests)).to.be.true;
+            });
+
+            it("Should have an id field that is a number", function () {
+                expect(this.res.body.requests[0].id).to.exist;
+                expect(Number(this.res.body.requests[0].id)).to.be.a('number');
+            });
+
+            it("Should have a status field", function () {
+                expect(this.res.body.requests[0].status).to.exist;
+            });
         });
     });
 
-    describe("Update a loan request", function () {
+    describe("Approve a loan request", function () {
 
         describe("As an unauthenticated user", function () {
 
+            let payload = {
+                action: "approve"
+            };
+
+            before(function () {
+                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest1.id;
+                return makeRequest('patch', url, false, payload).then(res => this.res = res);
+            });
+            
+            it("Should return a 403 status response", function () {
+                expect(this.res).to.have.a.status(403);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have a error field", function () {
+                expect(this.res.body.error).to.exist;
+            });
+
+            it("Should have the value \"You must be logged in to approve a loan request\" in the error field", function () {
+                expect(this.res.body.error).to.equal('You must be logged in to approve a loan request');
+            });
+
+        });
+
+        describe("As an authenticated user who isn't the owner of the book", function () {
+
+            let payload = {
+                action: "approve"
+            };
+
+            before(function () {
+                let url = '/api/books/' + fixtures.copy3.id + '/requests/' + fixtures.request4.id;
+                return makeRequest('patch', url, true, payload).then(res => this.res = res);
+            });
+            
+            it("Should return a 403 status response", function () {
+                expect(this.res).to.have.a.status(403);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have a error field", function () {
+                expect(this.res.body.error).to.exist;
+            });
+
+            it("Should have the value \"You do not have permission to modify that loan request\" in the error field", function () {
+                expect(this.res.body.error).to.equal('You do not have permission to modify that loan request');
+            });
+        });
+
+        describe("As an authenticated user, who owns the book", function () {
+            
+            before(function () {
+                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest2.id;
+                return makeRequest('patch', url, true, {action: "approve"}).then(res => this.res = res);
+            });
+
+            it("Should return a 200 status", function () {
+                expect(this.res).to.have.a.status(200);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have a message field", function () {
+                expect(this.res.body.message).to.exist;
+            });
+
+            it("Should have a value of \"Request approved\" in the message field", function () {
+                expect(this.res.body.message).to.equal("Request approved");
+            });
+
+        });
+
+    });
+
+    describe("Decline a loan request", function () {
+
+        describe("As an unauthenticated user, or an authenticated user who isn't the owner of the book", function () {
+
             it("Should return an error");
 
         });
 
-        describe("As an authenticated user that doesn't own the request", function () {
+        describe("As an authenticated user, who owns the book", function () {
+            
+            it("Should succeed!");
+
+        });
+
+    });
+
+    describe("Mark a borrowed book as returned", function () {
+
+        describe("As an unauthenticated user, or as an authenticated user who is not the borrower", function () {
 
             it("Should return an error");
 
         });
 
-        describe("As an authenticated user that owns the request", function () {
+        describe("As an authenticated user, who is the borrower", function () {
 
-            it("Should modify the loan request");
+            it("Should succeed!");
 
         });
+
     });
 
     describe("Delete/cancel a book request", function () {
