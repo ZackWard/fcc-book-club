@@ -46,14 +46,12 @@ export function getBooks (req, res) {
         {
             model: models.Book,
             attributes: ['title', 'subtitle', 'authors', 'description', 'image'],
+        },
+        {
+            model: models.LoanRequest,
+            include: [ models.User ]
         }
     ];
-
-    if (req.query.includeRequests) {
-        included.push({
-            model: models.LoanRequest
-        });
-    }
 
     models.BookCopy.findAll({include: included}).then(books => {
 
@@ -72,8 +70,17 @@ export function getBooks (req, res) {
                 owner: book.user.username,
             };
             if (req.query.includeRequests) {
-                transformedBook.requests = (transformedBook.owner == req.session.user) ? getOwnerRequests(book.loanrequests) : getNonOwnerRequests(book.loanrequests);
+                transformedBook.requests = (transformedBook.owner == req.session.user) ? getOwnerRequests(book.loanRequests) : getNonOwnerRequests(book.loanRequests);
             }
+
+            let requestedByCurrentUser = false;
+            book.loanRequests.forEach(loanRequest => {
+                if (loanRequest.user.username == req.session.user && loanRequest.status == "requested") {
+                    requestedByCurrentUser = true;
+                }
+            });
+            transformedBook.requestedByCurrentUser = requestedByCurrentUser;
+            
             return transformedBook;
         });
         return res.json(results);
@@ -81,7 +88,7 @@ export function getBooks (req, res) {
 
     function getOwnerRequests(requests) {
         if ( ! Array.isArray(requests)) return [];
-        return ['Owner'];
+        return requests;
     } 
 
     function getNonOwnerRequests(requests) {
