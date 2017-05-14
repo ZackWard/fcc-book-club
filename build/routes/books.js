@@ -44,13 +44,12 @@ function getBooks(req, res) {
         {
             model: models.Book,
             attributes: ['title', 'subtitle', 'authors', 'description', 'image'],
+        },
+        {
+            model: models.LoanRequest,
+            include: [models.User]
         }
     ];
-    if (req.query.includeRequests) {
-        included.push({
-            model: models.LoanRequest
-        });
-    }
     models.BookCopy.findAll({ include: included }).then(books => {
         // Here, we need to filter the Loan Requests if the user has requested that they be included. 
         // If the user is the owner of the book, we'll include the full Loan Request information.
@@ -67,8 +66,15 @@ function getBooks(req, res) {
                 owner: book.user.username,
             };
             if (req.query.includeRequests) {
-                transformedBook.requests = (transformedBook.owner == req.session.user) ? getOwnerRequests(book.loanrequests) : getNonOwnerRequests(book.loanrequests);
+                transformedBook.requests = (transformedBook.owner == req.session.user) ? getOwnerRequests(book.loanRequests) : getNonOwnerRequests(book.loanRequests);
             }
+            let requestedByCurrentUser = false;
+            book.loanRequests.forEach(loanRequest => {
+                if (loanRequest.user.username == req.session.user && loanRequest.status == "requested") {
+                    requestedByCurrentUser = true;
+                }
+            });
+            transformedBook.requestedByCurrentUser = requestedByCurrentUser;
             return transformedBook;
         });
         return res.json(results);
@@ -76,7 +82,7 @@ function getBooks(req, res) {
     function getOwnerRequests(requests) {
         if (!Array.isArray(requests))
             return [];
-        return ['Owner'];
+        return requests;
     }
     function getNonOwnerRequests(requests) {
         if (!Array.isArray(requests))

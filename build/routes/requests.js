@@ -63,55 +63,75 @@ exports.getRequests = getRequests;
 ;
 function modifyRequest(req, res) {
     if (!req.session.user) {
-        return res.status(403).json({ error: "You must be logged in to approve a loan request" });
+        return res.status(403).json({ error: "You must be logged in to modify a loan request" });
     }
     // Return early for invalid actions
     let requestedAction = String(req.body.action).toLowerCase();
     let validActions = ["approve", "decline", "return"];
     if (validActions.indexOf(requestedAction) == -1) {
-        return res.status(401).json({ message: "Invalid Action" });
+        return res.status(401).json({ message: "Invalid action" });
     }
     let queryInclusions = [models.User, { model: models.BookCopy, include: [models.User] }];
     models.LoanRequest.findOne({ where: { id: Number(req.params.requestId), bookCopyId: Number(req.params.bookId) }, include: queryInclusions })
-        .then(bookRequest => {
-        if (bookRequest == null) {
-            return Promise.reject({ code: 404, message: "That request was not found" });
-        }
-        if (req.session.user != bookRequest.bookCopy.user.username) {
-            return Promise.reject({ code: 403, message: "You do not have permission to modify that loan request" });
-        }
-        if (bookRequest.status == "declined" || bookRequest.status == "returned") {
-            return Promise.reject({ code: 403, message: "This loan request cannot be modified" });
-        }
-        if (bookRequest.status == "requested" && requestedAction == "approve") {
-            // Change book status to unavailable
-            bookRequest.bookCopy.status = "unavailable";
-            // Change request status to "lent"
-            bookRequest.status = "lent";
-            return bookRequest.save()
-                .then(() => res.json({ message: "Request approved" }))
-                .catch(() => res.status(500).json({ message: "Unknown error saving request" }));
-        }
-        if (bookRequest.status == "requested" && requestedAction == "decline") {
-            // Change request status to "declined"
-            bookRequest.status = "declined";
-            return bookRequest.save()
-                .then(() => res.json({ message: "Request declined" }))
-                .catch(() => res.status(500).json({ message: "Unknown error saving request" }));
-        }
-        if (bookRequest.status == "lent" && requestedAction == "return") {
-            // Change book status to available
-            bookRequest.bookCopy.status = "available";
-            // Change request status to "returned"
-            bookRequest.status = "returned";
-            return bookRequest.save()
-                .then(() => res.json({ message: "Book returned" }))
-                .catch(() => res.status(500).json({ message: "Unknown error saving request" }));
-        }
-    })
+        .then(verifyRequestFound)
+        .then(verifyRequestOwnership)
+        .then(verifyRequestStatus)
+        .then(makeRequestModification)
+        .then(saveModifiedRequest)
         .catch(error => {
         return res.status(error.code).json({ error: error.message });
     });
+    function saveModifiedRequest([bookRequest, message]) {
+        return bookRequest.save().then(() => { res.json({ message: message }); }).catch(err => res.status(500).json(err));
+    }
+    ;
+    function makeRequestModification(bookRequest) {
+        if (bookRequest.status == "requested" && requestedAction == "approve") {
+            bookRequest.bookCopy.status = "unavailable";
+            bookRequest.status = "lent";
+            return [bookRequest, "Request approved"];
+        }
+        else if (bookRequest.status == "requested" && requestedAction == "decline") {
+            bookRequest.status = "declined";
+            return [bookRequest, "Request declined"];
+        }
+        else if (bookRequest.status == "lent" && requestedAction == "return") {
+            bookRequest.bookCopy.status = "available";
+            bookRequest.status = "returned";
+            return [bookRequest, "Book returned"];
+        }
+        else {
+            return [bookRequest, "Request not modified"];
+        }
+    }
+    ;
+    function verifyRequestFound(bookRequest) {
+        if (bookRequest == null) {
+            return Promise.reject({ code: 404, message: "That request was not found" });
+        }
+        else {
+            return bookRequest;
+        }
+    }
+    ;
+    function verifyRequestOwnership(bookRequest) {
+        if (req.session.user != bookRequest.bookCopy.user.username) {
+            return Promise.reject({ code: 403, message: "You do not have permission to modify that loan request" });
+        }
+        else {
+            return bookRequest;
+        }
+    }
+    ;
+    function verifyRequestStatus(bookRequest) {
+        if (bookRequest.status == "declined" || bookRequest.status == "returned") {
+            return Promise.reject({ code: 403, message: "This loan request cannot be modified" });
+        }
+        else {
+            return bookRequest;
+        }
+    }
+    ;
 }
 exports.modifyRequest = modifyRequest;
 ;
