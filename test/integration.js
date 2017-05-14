@@ -395,6 +395,13 @@ describe("API Integration Tests", function () {
 
     describe("Retrieve a list of books", function () {
 
+        before(function () {
+            let newLoanRequest = db.LoanRequest.build({status: "requested"});
+            newLoanRequest.setBookCopy(fixtures.copy1, {save: false});
+            newLoanRequest.setUser(fixtures.newUser, {save: false});
+            return newLoanRequest.save()
+        });
+
         describe("As an unauthenticated user", function () {
 
             before(function () {
@@ -473,6 +480,20 @@ describe("API Integration Tests", function () {
                     }
 
                 });
+            });
+        });
+
+        describe("When the user has already requested a book in the list", function () {
+
+            before(function () {
+                return makeRequest('get', '/api/books', true, false).then(res => this.res = res);
+            });
+
+            it("Should have a requestedByCurrentUser field with a value of true", function () {
+                // fixtures.copy1 is the book that we set a request up for
+                let target = this.res.body.filter(book => book.id == fixtures.copy1.id)[0];
+                expect(target.requestedByCurrentUser).to.exist;
+                expect(target.requestedByCurrentUser).to.equal(true);
             });
         });
     });    
@@ -644,6 +665,43 @@ describe("API Integration Tests", function () {
 
     describe("Approve a loan request", function () {
 
+        describe("That does not exist", function () {
+
+            before(function () {
+                let url = '/api/books/' + fixtures.newBook.id + '/requests/999';
+                return makeRequest('patch', url, true, {action: "approve"}).then(res => this.res = res);
+            });
+
+            it("Should return a status 404 response", function () {
+                expect(this.res).to.have.a.status(404);
+            });
+        });
+
+        describe("With an invalid action", function () {
+
+            before(function () {
+                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest2.id;
+                return makeRequest('patch', url, true, {action: "invalid"}).then(res => this.res = res);
+            });
+
+            it("Should return a status 401 response", function () {
+                expect(this.res).to.have.a.status(401);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have a message field", function () {
+                expect(this.res.body.message).to.exist;
+            });
+
+            it("Should have the value \"Invalid action\" in the message field", function () {
+                expect(String(this.res.body.message)).to.equal("Invalid action");
+            });
+
+        });
+
         describe("As an unauthenticated user", function () {
 
             let payload = {
@@ -667,8 +725,8 @@ describe("API Integration Tests", function () {
                 expect(this.res.body.error).to.exist;
             });
 
-            it("Should have the value \"You must be logged in to approve a loan request\" in the error field", function () {
-                expect(this.res.body.error).to.equal('You must be logged in to approve a loan request');
+            it("Should have the value \"You must be logged in to modify a loan request\" in the error field", function () {
+                expect(this.res.body.error).to.equal('You must be logged in to modify a loan request');
             });
 
         });
@@ -704,7 +762,7 @@ describe("API Integration Tests", function () {
         describe("As an authenticated user, who owns the book", function () {
             
             before(function () {
-                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest2.id;
+                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest1.id;
                 return makeRequest('patch', url, true, {action: "approve"}).then(res => this.res = res);
             });
 
@@ -730,15 +788,116 @@ describe("API Integration Tests", function () {
 
     describe("Decline a loan request", function () {
 
-        describe("As an unauthenticated user, or an authenticated user who isn't the owner of the book", function () {
+        let payload = {action: "decline"};
 
-            it("Should return an error");
+        describe("That does not exist", function () {
 
+            before(function () {
+                let url = '/api/books/' + fixtures.newBook.id + '/requests/999';
+                return makeRequest('patch', url, true, payload).then(res => this.res = res);
+            });
+
+            it("Should return a status 404 response", function () {
+                expect(this.res).to.have.a.status(404);
+            });
+        });
+
+        describe("With an invalid action", function () {
+
+            before(function () {
+                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest2.id;
+                return makeRequest('patch', url, true, {action: "invalid"}).then(res => this.res = res);
+            });
+
+            it("Should return a status 401 response", function () {
+                expect(this.res).to.have.a.status(401);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have a message field", function () {
+                expect(this.res.body.message).to.exist;
+            });
+
+            it("Should have the value \"Invalid action\" in the message field", function () {
+                expect(String(this.res.body.message)).to.equal("Invalid action");
+            });
+
+        });
+
+        describe("As an unauthenticated user", function () {
+
+            before(function () {
+                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest2.id;
+                return makeRequest('patch', url, false, payload).then(res => this.res = res);
+            });
+            
+            it("Should return a 403 status response", function () {
+                expect(this.res).to.have.a.status(403);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have a error field", function () {
+                expect(this.res.body.error).to.exist;
+            });
+
+            it("Should have the value \"You must be logged in to modify a loan request\" in the error field", function () {
+                expect(this.res.body.error).to.equal('You must be logged in to modify a loan request');
+            });
+
+        });
+
+        describe("As an authenticated user who isn't the owner of the book", function () {
+
+            before(function () {
+                let url = '/api/books/' + fixtures.copy3.id + '/requests/' + fixtures.request4.id;
+                return makeRequest('patch', url, true, payload).then(res => this.res = res);
+            });
+            
+            it("Should return a 403 status response", function () {
+                expect(this.res).to.have.a.status(403);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have a error field", function () {
+                expect(this.res.body.error).to.exist;
+            });
+
+            it("Should have the value \"You do not have permission to modify that loan request\" in the error field", function () {
+                expect(this.res.body.error).to.equal('You do not have permission to modify that loan request');
+            });
         });
 
         describe("As an authenticated user, who owns the book", function () {
             
-            it("Should succeed!");
+            before(function () {
+                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest2.id;
+                return makeRequest('patch', url, true, payload).then(res => this.res = res);
+            });
+
+            it("Should return a 200 status", function () {
+                expect(this.res).to.have.a.status(200);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have a message field", function () {
+                expect(this.res.body.message).to.exist;
+            });
+
+            it("Should have a value of \"Request declined\" in the message field", function () {
+                expect(this.res.body.message).to.equal("Request declined");
+            });
 
         });
 
@@ -758,6 +917,27 @@ describe("API Integration Tests", function () {
 
         });
 
+    });
+
+    describe("Get a list of requests for a given user", function () {
+
+        describe("As an unauthenticated user", function () {
+
+            it("Should return an error");
+
+        });
+
+        describe("As an authenticated user, but not the user requested", function () {
+
+            it("Should return an error");
+
+        });
+
+        describe("As an authenticated user, the user that was requested", function () {
+
+            it("Should return the list of requests");
+
+        });
     });
 
     describe("Delete/cancel a book request", function () {
