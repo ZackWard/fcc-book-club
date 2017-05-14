@@ -4,13 +4,9 @@
   "description": "FCC Project: Book Trading Club",
   "main": "index.js",
   "scripts": {
+    "start": "node ./build/book-club-server.js",
     "test": "tsc&set NODE_ENV=testing&mocha",
-    "test2": "tsc;export NODE_ENV=testing;mocha --timeout 10000",
-    "dev": "start \"Sass\" node-sass -w -o public src/client/sass/styles.scss & start \"Webpack\" webpack --watch & start \"Typescript\" tsc --watch & nodemon ./build/book-club-server.js",
-    "build:sass": "node-sass -w -o public src/client/sass/styles.scss",
-    "build:webpack": "webpack --watch",
-    "build:tsc": "tsc --watch",
-    "server": "nodemon ./build/book-club-server.js"
+    "test-linux": "tsc;export NODE_ENV=testing;mocha --timeout 10000"
   },
   "repository": {
     "type": "git",

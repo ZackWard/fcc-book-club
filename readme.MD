@@ -2,6 +2,15 @@
 
 ---
 
+## To install
+
+- Clone the repository
+- `npm install`
+- Copy the example.env file to .env, and add your cookie secret in that file
+- `node ./build/init-db.js`
+- `npm start`
+- Browse to http://localhost:3008
+
 ## User Stories
 
 - [ ] User Story: I can view all books posted by every user.
