@@ -7,7 +7,7 @@ module.exports = function (sequelize, DataTypes) {
                 console.log("Associating BookCopy Model");
                 BookCopy.belongsTo(models.User);
                 BookCopy.belongsTo(models.Book);
-                BookCopy.hasMany(models.LoanRequest);
+                BookCopy.hasMany(models.TradeRequest);
             }
         }
     });

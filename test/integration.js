@@ -31,7 +31,6 @@ function makeRequest(method, url, useAgent = false, payload = false) {
     });
 };
 
-
 describe("API Integration Tests", function () {
 
     let createdBookID; // We'll store the ID when we create a book, that way we can edit it later
@@ -45,7 +44,7 @@ describe("API Integration Tests", function () {
     };
 
     function buildRequest(status, bookCopy, user) {
-        let newRequest = db.LoanRequest.build({ status: status });
+        let newRequest = db.TradeRequest.build({ status: status });
         newRequest.setUser(user, { save: false });
         newRequest.setBookCopy(bookCopy, { save: false });
         return newRequest;
@@ -61,18 +60,33 @@ describe("API Integration Tests", function () {
             let book3p = db.Book.create({title: "Fake Book Three"});
             Promise.all([user1p, user2p, user3p, book1p, book2p, book3p])
             .then(([user1, user2, user3, book1, book2, book3]) => {
-                fixtures = {user1, user2, user3, book1, book2, book3}
+                fixtures = {user1, user2, user3, book1, book2, book3};
                 fixtures.copy1 = makeBook(fixtures.user1, fixtures.book1);
                 fixtures.copy2 = makeBook(fixtures.user1, fixtures.book2);
                 fixtures.copy3 = makeBook(fixtures.user2, fixtures.book3);
-                return Promise.all([fixtures.copy1.save(), fixtures.copy2.save(), fixtures.copy3.save()]);
+                fixtures.copy4 = makeBook(fixtures.user3, fixtures.book1);
+                return Promise.all([fixtures.copy1.save(), fixtures.copy2.save(), fixtures.copy3.save(), fixtures.copy4.save()]);
             })
-            .then(([copy1, copy2, copy3]) => {
-                fixtures.request1 = buildRequest('requested', fixtures.copy1, fixtures.user2);
-                fixtures.request2 = buildRequest('requested', fixtures.copy2, fixtures.user2);
-                fixtures.request3 = buildRequest('requested', fixtures.copy3, fixtures.user1);
-                fixtures.request4 = buildRequest('requested', fixtures.copy3, fixtures.user3);
+            .then(() => {
+                let updateUser1 = fixtures.user1.reload({include: [db.BookCopy]});
+                let updateUser2 = fixtures.user2.reload({include: [db.BookCopy]});
+                let updateUser3 = fixtures.user3.reload({include: [db.BookCopy]});
+                return Promise.all([updateUser1, updateUser2, updateUser3]);
+            })
+            .then(() => {
+                fixtures.request1 = buildRequest("requested", fixtures.copy1, fixtures.user2);
+                fixtures.request2 = buildRequest("requested", fixtures.copy2, fixtures.user2);
+                fixtures.request3 = buildRequest("requested", fixtures.copy3, fixtures.user1);
+                fixtures.request4 = buildRequest("requested", fixtures.copy3, fixtures.user3);
                 return Promise.all([fixtures.request1.save(), fixtures.request2.save(), fixtures.request3.save(), fixtures.request4.save()]);
+            })
+            .then(() => {
+                // Attach every book that the user owns to the trade offer
+                let p1 = fixtures.request1.setBooksOffered(fixtures.user2.bookCopies);
+                let p2 = fixtures.request2.setBooksOffered(fixtures.user2.bookCopies);
+                let p3 = fixtures.request3.setBooksOffered(fixtures.user1.bookCopies);
+                let p4 = fixtures.request4.setBooksOffered(fixtures.user3.bookCopies);
+                return Promise.all([p1, p2, p3, p4]);
             })
             .then(([r1, r2, r3, r4]) => {
                 console.log("Database set up");
@@ -82,15 +96,17 @@ describe("API Integration Tests", function () {
         });
     }
     
-    before(function (done) {
+    before(function () {
         // Empty the database
-        db.sequelize.sync({force: true})
+        return db.sequelize.sync({force: true, logging: console.log})
         .then(() => {
             console.log("Cleared database!");
             return buildDatabase();
         })
-        .then(() => done())
-        .catch(error => done(error));
+        .catch((error) => {
+            console.log(error);
+            return Promise.reject("Error!");
+        });
     });
 
     describe("Create a new user", function () {
@@ -396,10 +412,10 @@ describe("API Integration Tests", function () {
     describe("Retrieve a list of books", function () {
 
         before(function () {
-            let newLoanRequest = db.LoanRequest.build({status: "requested"});
-            newLoanRequest.setBookCopy(fixtures.copy1, {save: false});
-            newLoanRequest.setUser(fixtures.newUser, {save: false});
-            return newLoanRequest.save()
+            let newTradeRequest = db.TradeRequest.build({status: "requested"});
+            newTradeRequest.setBookCopy(fixtures.copy1, {save: false});
+            newTradeRequest.setUser(fixtures.newUser, {save: false});
+            return newTradeRequest.save()
         });
 
         describe("As an unauthenticated user", function () {
@@ -420,8 +436,8 @@ describe("API Integration Tests", function () {
                 expect(Array.isArray(this.res.body)).to.be.true;
             });
 
-            it("Should have 4 books in the array", function () {
-                expect(this.res.body).to.be.lengthOf(4);
+            it("Should have 5 books in the array", function () {
+                expect(this.res.body).to.be.lengthOf(5);
             });
         });
 
@@ -498,7 +514,7 @@ describe("API Integration Tests", function () {
         });
     });    
 
-    describe("Make a new loan request", function () {
+    describe("Make a new trade request", function () {
 
         describe('As an unauthenticated user', function () {
 
@@ -516,7 +532,7 @@ describe("API Integration Tests", function () {
 
         });
 
-        describe("As an authenticated user, when requesting a book that the user owns", function () {
+        describe("As an authenticated user, when making a trade request without offering books in exchange", function () {
 
             before(function () {
                 return makeRequest('post', '/api/books/' + createdBookID + '/requests', true, false).then(res => this.res = res);
@@ -534,8 +550,65 @@ describe("API Integration Tests", function () {
                 expect(this.res.body.message).to.exist;
             });
 
-            it("Should respond with the message: You own this book, and so cannot request to borrow it.", function () {
-                expect(this.res.body.message).to.equal('You own this book, and so cannot request to borrow it.');
+            let errorMessage = "Field 'booksOffered' must be an array of integers";
+
+            it("Should respond with the message: " + errorMessage, function () {
+                expect(this.res.body.message).to.equal(errorMessage);
+            });
+
+        });
+
+        describe("As an authenticated user, when making a trade request, offering a book that you do not own", function () {
+
+            before(function () {
+                return makeRequest('post', '/api/books/1/requests', true, {booksOffered: [99]}).then(res => this.res = res);
+            });
+
+            it("Should return a 403 status response", function () {
+                expect(this.res).to.have.a.status(403);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have a message property", function () {
+                expect(this.res.body.message).to.exist;
+            });
+
+            let errorMessage = "You must offer at least 1 book in exchange if you would like to make a trade request.";
+
+            it("Should respond with the message: " + errorMessage, function () {
+                expect(this.res.body.message).to.equal(errorMessage);
+            });
+
+        });
+
+        describe("As an authenticated user, when requesting a book that the user owns", function () {
+
+            before(function () {
+                let payload = {
+                    booksOffered: [ createdBookID ]
+                };
+                return makeRequest('post', '/api/books/' + createdBookID + '/requests', true, payload).then(res => this.res = res);
+            });
+
+            it("Should return a 403 status response", function () {
+                expect(this.res).to.have.a.status(403);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have a message property", function () {
+                expect(this.res.body.message).to.exist;
+            });
+
+            let errorMessage = "You cannot trade with yourself. This is a book that you already own."
+
+            it("Should respond with the message: " + errorMessage, function () {
+                expect(this.res.body.message).to.equal(errorMessage);
             });
 
         });
@@ -543,7 +616,10 @@ describe("API Integration Tests", function () {
         describe("As an authenticated user, when requesting a book that another user owns", function () {
 
             before(function () {
-                return makeRequest('post', '/api/books/1/requests', true, false).then(res => this.res = res);
+                let payload = {
+                    booksOffered: [ createdBookID ]
+                };
+                return makeRequest('post', '/api/books/1/requests', true, payload).then(res => this.res = res);
             });
 
             it("Should return a 200 status response", function () {
@@ -558,13 +634,13 @@ describe("API Integration Tests", function () {
                 expect(this.res.body.status).to.exist;
             });
 
-            it("Should have the string \"requested\" in the status field", function () {
-                expect(this.res.body.status).to.equal("requested");
+            it("Should have the string \"pending\" in the status field", function () {
+                expect(this.res.body.status).to.equal("pending");
             });
         });
     });
 
-    describe("Get a list of loan requests for a given book", function () {
+    describe("Get a list of trade requests for a given book", function () {
 
         describe("As an unauthenticated user", function () {
 
@@ -628,10 +704,10 @@ describe("API Integration Tests", function () {
 
             before(function () {
                 // Insert a couple of requests into the database
-                fixtures.newRequest1 = db.LoanRequest.build({status: "requested"});
+                fixtures.newRequest1 = db.TradeRequest.build({status: "requested"});
                 fixtures.newRequest1.setUser(fixtures.user1, {save: false});
                 fixtures.newRequest1.setBookCopy(fixtures.newBook, {save: false});
-                fixtures.newRequest2 = db.LoanRequest.build({status: "requested"});
+                fixtures.newRequest2 = db.TradeRequest.build({status: "requested"});
                 fixtures.newRequest2.setUser(fixtures.user2, {save: false});
                 fixtures.newRequest2.setBookCopy(fixtures.newBook, {save: false});
                 return Promise.all([fixtures.newRequest1.save(), fixtures.newRequest2.save()])
@@ -663,7 +739,7 @@ describe("API Integration Tests", function () {
         });
     });
 
-    describe("Approve a loan request", function () {
+    describe("Approve a trade request", function () {
 
         describe("That does not exist", function () {
 
@@ -725,8 +801,8 @@ describe("API Integration Tests", function () {
                 expect(this.res.body.error).to.exist;
             });
 
-            it("Should have the value \"You must be logged in to modify a loan request\" in the error field", function () {
-                expect(this.res.body.error).to.equal('You must be logged in to modify a loan request');
+            it("Should have the value \"You must be logged in to modify a trade request\" in the error field", function () {
+                expect(this.res.body.error).to.equal('You must be logged in to modify a trade request');
             });
 
         });
@@ -754,8 +830,8 @@ describe("API Integration Tests", function () {
                 expect(this.res.body.error).to.exist;
             });
 
-            it("Should have the value \"You do not have permission to modify that loan request\" in the error field", function () {
-                expect(this.res.body.error).to.equal('You do not have permission to modify that loan request');
+            it("Should have the value \"You do not have permission to modify that trade request\" in the error field", function () {
+                expect(this.res.body.error).to.equal('You do not have permission to modify that trade request');
             });
         });
 
@@ -786,138 +862,122 @@ describe("API Integration Tests", function () {
 
     });
 
-    describe("Decline a loan request", function () {
+    // describe("Decline a trade request", function () {
 
-        let payload = {action: "decline"};
+    //     let payload = {action: "decline"};
 
-        describe("That does not exist", function () {
+    //     describe("That does not exist", function () {
 
-            before(function () {
-                let url = '/api/books/' + fixtures.newBook.id + '/requests/999';
-                return makeRequest('patch', url, true, payload).then(res => this.res = res);
-            });
+    //         before(function () {
+    //             let url = '/api/books/' + fixtures.newBook.id + '/requests/999';
+    //             return makeRequest('patch', url, true, payload).then(res => this.res = res);
+    //         });
 
-            it("Should return a status 404 response", function () {
-                expect(this.res).to.have.a.status(404);
-            });
-        });
+    //         it("Should return a status 404 response", function () {
+    //             expect(this.res).to.have.a.status(404);
+    //         });
+    //     });
 
-        describe("With an invalid action", function () {
+    //     describe("With an invalid action", function () {
 
-            before(function () {
-                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest2.id;
-                return makeRequest('patch', url, true, {action: "invalid"}).then(res => this.res = res);
-            });
+    //         before(function () {
+    //             let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest2.id;
+    //             return makeRequest('patch', url, true, {action: "invalid"}).then(res => this.res = res);
+    //         });
 
-            it("Should return a status 401 response", function () {
-                expect(this.res).to.have.a.status(401);
-            });
+    //         it("Should return a status 401 response", function () {
+    //             expect(this.res).to.have.a.status(401);
+    //         });
 
-            it("Should return a JSON object", function () {
-                expect(this.res).to.be.json;
-            });
+    //         it("Should return a JSON object", function () {
+    //             expect(this.res).to.be.json;
+    //         });
 
-            it("Should have a message field", function () {
-                expect(this.res.body.message).to.exist;
-            });
+    //         it("Should have a message field", function () {
+    //             expect(this.res.body.message).to.exist;
+    //         });
 
-            it("Should have the value \"Invalid action\" in the message field", function () {
-                expect(String(this.res.body.message)).to.equal("Invalid action");
-            });
+    //         it("Should have the value \"Invalid action\" in the message field", function () {
+    //             expect(String(this.res.body.message)).to.equal("Invalid action");
+    //         });
 
-        });
+    //     });
 
-        describe("As an unauthenticated user", function () {
+    //     describe("As an unauthenticated user", function () {
 
-            before(function () {
-                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest2.id;
-                return makeRequest('patch', url, false, payload).then(res => this.res = res);
-            });
+    //         before(function () {
+    //             let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest2.id;
+    //             return makeRequest('patch', url, false, payload).then(res => this.res = res);
+    //         });
             
-            it("Should return a 403 status response", function () {
-                expect(this.res).to.have.a.status(403);
-            });
+    //         it("Should return a 403 status response", function () {
+    //             expect(this.res).to.have.a.status(403);
+    //         });
 
-            it("Should return a JSON object", function () {
-                expect(this.res).to.be.json;
-            });
+    //         it("Should return a JSON object", function () {
+    //             expect(this.res).to.be.json;
+    //         });
 
-            it("Should have a error field", function () {
-                expect(this.res.body.error).to.exist;
-            });
+    //         it("Should have a error field", function () {
+    //             expect(this.res.body.error).to.exist;
+    //         });
 
-            it("Should have the value \"You must be logged in to modify a loan request\" in the error field", function () {
-                expect(this.res.body.error).to.equal('You must be logged in to modify a loan request');
-            });
+    //         it("Should have the value \"You must be logged in to modify a trade request\" in the error field", function () {
+    //             expect(this.res.body.error).to.equal('You must be logged in to modify a trade request');
+    //         });
 
-        });
+    //     });
 
-        describe("As an authenticated user who isn't the owner of the book", function () {
+    //     describe("As an authenticated user who isn't the owner of the book", function () {
 
-            before(function () {
-                let url = '/api/books/' + fixtures.copy3.id + '/requests/' + fixtures.request4.id;
-                return makeRequest('patch', url, true, payload).then(res => this.res = res);
-            });
+    //         before(function () {
+    //             let url = '/api/books/' + fixtures.copy3.id + '/requests/' + fixtures.request4.id;
+    //             return makeRequest('patch', url, true, payload).then(res => this.res = res);
+    //         });
             
-            it("Should return a 403 status response", function () {
-                expect(this.res).to.have.a.status(403);
-            });
+    //         it("Should return a 403 status response", function () {
+    //             expect(this.res).to.have.a.status(403);
+    //         });
 
-            it("Should return a JSON object", function () {
-                expect(this.res).to.be.json;
-            });
+    //         it("Should return a JSON object", function () {
+    //             expect(this.res).to.be.json;
+    //         });
 
-            it("Should have a error field", function () {
-                expect(this.res.body.error).to.exist;
-            });
+    //         it("Should have a error field", function () {
+    //             expect(this.res.body.error).to.exist;
+    //         });
 
-            it("Should have the value \"You do not have permission to modify that loan request\" in the error field", function () {
-                expect(this.res.body.error).to.equal('You do not have permission to modify that loan request');
-            });
-        });
+    //         it("Should have the value \"You do not have permission to modify that trade request\" in the error field", function () {
+    //             expect(this.res.body.error).to.equal('You do not have permission to modify that trade request');
+    //         });
+    //     });
 
-        describe("As an authenticated user, who owns the book", function () {
+    //     describe("As an authenticated user, who owns the book", function () {
             
-            before(function () {
-                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest2.id;
-                return makeRequest('patch', url, true, payload).then(res => this.res = res);
-            });
+    //         before(function () {
+    //             let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest2.id;
+    //             return makeRequest('patch', url, true, payload).then(res => this.res = res);
+    //         });
 
-            it("Should return a 200 status", function () {
-                expect(this.res).to.have.a.status(200);
-            });
+    //         it("Should return a 200 status", function () {
+    //             expect(this.res).to.have.a.status(200);
+    //         });
 
-            it("Should return a JSON object", function () {
-                expect(this.res).to.be.json;
-            });
+    //         it("Should return a JSON object", function () {
+    //             expect(this.res).to.be.json;
+    //         });
 
-            it("Should have a message field", function () {
-                expect(this.res.body.message).to.exist;
-            });
+    //         it("Should have a message field", function () {
+    //             expect(this.res.body.message).to.exist;
+    //         });
 
-            it("Should have a value of \"Request declined\" in the message field", function () {
-                expect(this.res.body.message).to.equal("Request declined");
-            });
+    //         it("Should have a value of \"Request declined\" in the message field", function () {
+    //             expect(this.res.body.message).to.equal("Request declined");
+    //         });
 
-        });
+    //     });
 
-    });
-
-    describe("Mark a borrowed book as returned", function () {
-
-        describe("As an unauthenticated user, or as an authenticated user who is not the borrower", function () {
-
-            it("Should return an error");
-
-        });
-
-        describe("As an authenticated user, who is the borrower", function () {
-
-            it("Should succeed!");
-
-        });
-
-    });
+    // });
 
     describe("Get a list of requests for a given user", function () {
 

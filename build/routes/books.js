@@ -46,7 +46,7 @@ function getBooks(req, res) {
             attributes: ['title', 'subtitle', 'authors', 'description', 'image'],
         },
         {
-            model: models.LoanRequest,
+            model: models.TradeRequest,
             include: [models.User]
         }
     ];
@@ -66,11 +66,11 @@ function getBooks(req, res) {
                 owner: book.user.username,
             };
             if (req.query.includeRequests) {
-                transformedBook.requests = (transformedBook.owner == req.session.user) ? getOwnerRequests(book.loanRequests) : getNonOwnerRequests(book.loanRequests);
+                transformedBook.requests = (transformedBook.owner == req.session.user) ? getOwnerRequests(book.TradeRequests) : getNonOwnerRequests(book.TradeRequests);
             }
             let requestedByCurrentUser = false;
-            book.loanRequests.forEach(loanRequest => {
-                if (loanRequest.user.username == req.session.user && loanRequest.status == "requested") {
+            book.tradeRequests.forEach(TradeRequest => {
+                if (TradeRequest.user.username == req.session.user && TradeRequest.status == "requested") {
                     requestedByCurrentUser = true;
                 }
             });
@@ -115,7 +115,6 @@ function deleteBook(req, res) {
         .then(book => {
         // Only delete the book if the currently logged in user is the owner
         if (req.session.user === book.user.username) {
-            console.log("User owns the book. Deleting it.");
             return book.destroy().then(() => res.json({ message: "Book deleted" }));
         }
         else {

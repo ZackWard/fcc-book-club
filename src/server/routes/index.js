@@ -46,7 +46,7 @@ router.route('/api/books/:bookId/requests')
     .post(rejectNonJSON, parseJSON, requestRoutes.createRequest);
 
 router.route('/api/books/:bookId/requests/:requestId')
-    .patch(rejectNonJSON, parseJSON, requestRoutes.modifyRequest)
-    .delete(rejectNonJSON, parseJSON, requestRoutes.deleteRequest);
+    .delete(rejectNonJSON, parseJSON, requestRoutes.deleteRequest)
+    .post(rejectNonJSON, parseJSON, requestRoutes.approveRequest);
 
 export default router;

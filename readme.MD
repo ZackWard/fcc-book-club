@@ -32,6 +32,7 @@ GET /api/users/[username] - Get User Profile
 
 POST /api/books - Add Book
 GET /api/books - Get list of books
+GET /api/books?owner=[username] - Get a list of books owned by username
 GET /api/books/[book_id]
 PUT /api/books/[book_id] - Update Book
 DELETE /api/books/[book_id] - Delete Book
@@ -41,4 +42,5 @@ DELETE /api/books/[book_id] - Delete Book
 GET /api/books/[book_id]/requests - List current requests for book
 POST /api/books/[book_id]/requests - Add new request
 GET /api/books/[book_id]/requests/[request_id] - Retrieve request
-PUT /api/books/[book_id]/requests/[request_id] - Update request
+POST /api/books[book_id]/requests/[request_id] - Approve request (include the ID of the book that you're getting in trade)
+DELETE /api/books[book_id]/requests/[request_id] - Decline request (as the owner of the requested book) or cancel request (as the originator of the request)

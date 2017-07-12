@@ -30,7 +30,7 @@ module.exports = function (sequelize, DataTypes) {
                 // Using a 1:m association, because Sequelize doesn't allow multiple copies
                 // when using the n:m association
                 User.hasMany(models.BookCopy);
-                User.hasMany(models.LoanRequest);
+                User.hasMany(models.TradeRequest);
             }
         }
     });
