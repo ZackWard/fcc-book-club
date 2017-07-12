@@ -96,42 +96,36 @@ exports.getRequests = getRequests;
 ;
 function approveRequest(req, res) {
     if (!req.session.user) {
-        return res.status(403).json({ error: "You must be logged in to modify a trade request" });
+        return res.status(403).json({ error: "You must be logged in to approve a trade request." });
     }
-    let queryInclusions = [models.User, { model: models.BookCopy, include: [models.User] }];
+    let queryInclusions = [
+        {
+            model: models.User,
+            attributes: ["username", "firstName", "lastName", "city", "state"]
+        },
+        {
+            model: models.BookCopy,
+            include: [
+                {
+                    model: models.Book
+                },
+                {
+                    model: models.User,
+                    attributes: ["username", "firstName", "lastName", "city", "state"]
+                }
+            ]
+        }
+    ];
     models.TradeRequest.findOne({ where: { id: Number(req.params.requestId), bookCopyId: Number(req.params.bookId) }, include: queryInclusions })
         .then(verifyRequestFound)
         .then(verifyPermission)
+        .then(verifyExchange)
         .then(approveTradeRequest)
         .then(saveModifiedRequest)
         .catch(error => {
-        return res.status(error.code).json({ error: error.message });
+        console.log(error);
+        return res.status(error.code).json({ message: error.message });
     });
-    function saveModifiedRequest([bookRequest, message]) {
-        return bookRequest.save().then(() => { res.json({ message: message }); }).catch(err => res.status(500).json(err));
-    }
-    ;
-    function verifyExchange(bookRequest) {
-        // When we approve a trade request, 
-    }
-    ;
-    function approveTradeRequest(bookRequest) {
-        // if (bookRequest.status == "requested" && requestedAction == "approve") {
-        //     bookRequest.bookCopy.status = "unavailable";
-        //     bookRequest.status = "lent";
-        //     return [bookRequest, "Request approved"];
-        // } else if (bookRequest.status == "requested" && requestedAction == "decline") {
-        //     bookRequest.status = "declined";
-        //     return [bookRequest, "Request declined"];
-        // } else if (bookRequest.status == "lent" && requestedAction == "return") {
-        //     bookRequest.bookCopy.status = "available";
-        //     bookRequest.status = "returned";
-        //     return [bookRequest, "Book returned"];
-        // } else {
-        //     return [bookRequest, "Request not modified"];
-        // }
-    }
-    ;
     function verifyRequestFound(bookRequest) {
         if (bookRequest == null) {
             return Promise.reject({ code: 404, message: "That request was not found" });
@@ -146,8 +140,31 @@ function approveRequest(req, res) {
             return bookRequest;
         }
         else {
-            return Promise.reject({ code: 403, message: "You do not have permission to modify that trade request" });
+            return Promise.reject({ code: 403, message: "You do not have permission to approve that trade request." });
         }
+    }
+    ;
+    function approveTradeRequest(bookRequest) {
+        return [bookRequest, "Testing!"];
+    }
+    ;
+    function saveModifiedRequest([bookRequest, message]) {
+        return bookRequest.save().then(() => { res.json({ message: message }); }).catch(err => res.status(500).json(err));
+    }
+    ;
+    function verifyExchange(bookRequest) {
+        // The request should have a JSON field named "exchangedBook" that refers to a BookCopy that is available, and that is owned by the user who made the trade request
+        return new Promise(function (resolve, reject) {
+            if (typeof req.body.exchangedBook != "number") {
+                return reject({ code: 400, message: "The exchangedBook field must contain an integer." });
+            }
+            models.bookCopy.findOne({ where: { id: req.body.exchangedBook } })
+                .then(exchangedBook => {
+                console.log("Exchanged book:");
+                console.log(JSON.stringify(exchangedBook, null, 2));
+            })
+                .catch(error => reject({ code: 999, message: error }));
+        });
     }
     ;
 }

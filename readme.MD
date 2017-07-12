@@ -40,7 +40,7 @@ DELETE /api/books/[book_id] - Delete Book
 ### Requests Subresource
 
 GET /api/books/[book_id]/requests - List current requests for book
-POST /api/books/[book_id]/requests - Add new request
+POST /api/books/[book_id]/requests - Add new request. Include books that you're willing to exchange.
 GET /api/books/[book_id]/requests/[request_id] - Retrieve request
 POST /api/books[book_id]/requests/[request_id] - Approve request (include the ID of the book that you're getting in trade)
 DELETE /api/books[book_id]/requests/[request_id] - Decline request (as the owner of the requested book) or cancel request (as the originator of the request)
