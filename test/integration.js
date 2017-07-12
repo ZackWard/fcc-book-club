@@ -711,6 +711,9 @@ describe("API Integration Tests", function () {
                 fixtures.newRequest2.setUser(fixtures.user2, {save: false});
                 fixtures.newRequest2.setBookCopy(fixtures.newBook, {save: false});
                 return Promise.all([fixtures.newRequest1.save(), fixtures.newRequest2.save()])
+                .then(() => {
+                    return fixtures.newRequest1.setBooksOffered([fixtures.copy1.id, fixtures.copy2.id]);
+                })
                 .then(([r1, r2]) => {
                     return makeRequest('get', '/api/books/' + fixtures.newBook.id + '/requests', true, false).then(res => this.res = res);
                 });
@@ -740,6 +743,12 @@ describe("API Integration Tests", function () {
     });
 
     describe("Approve a trade request", function () {
+
+        before(function (done) {
+            // We need a trade request from one of the fixture users to our new authenticated user
+            console.log(JSON.stringify(fixtures, null, 2));
+            done();
+        });
 
         describe("That does not exist", function () {
 
@@ -843,7 +852,55 @@ describe("API Integration Tests", function () {
 
         describe("As an authenticated user, who owns the book, but with an invalid exchangedBook", function () {
 
-            it("Should return an error");
+             before(function () {
+                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest1.id;
+                return makeRequest('post', url, true, {exchangedBook: 99}).then(res => this.res = res);
+            });
+
+            it("Should return a 400 status", function () {
+                expect(this.res).to.have.a.status(400);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have a message field", function () {
+                expect(this.res.body.message).to.exist;
+            });
+
+            let errorMessage = "You cannot exchange a book that doesn't exist.";
+
+            it("Should have a value of \"" + errorMessage + "\" in the message field", function () {
+                expect(this.res.body.message).to.equal(errorMessage);
+            });
+
+        });
+
+        describe("As an authenticated user, who owns the book, when attempting to exchange a book that wasn't offered", function () {
+            
+            before(function () {
+                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest1.id;
+                return makeRequest('post', url, true, {exchangedBook: 5}).then(res => this.res = res);
+            });
+
+            it("Should return a 400 status", function () {
+                expect(this.res).to.have.a.status(400);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have a message field", function () {
+                expect(this.res.body.message).to.exist;
+            });
+
+            let errorMessage = "The exchanged book must be one of the books that was offered.";
+
+            it("Should have a value of \"" + errorMessage + "\" in the message field", function () {
+                expect(this.res.body.message).to.equal(errorMessage);
+            });
 
         });
 
@@ -851,7 +908,7 @@ describe("API Integration Tests", function () {
             
             before(function () {
                 let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest1.id;
-                return makeRequest('post', url, true, {exchangedBook: 5}).then(res => this.res = res);
+                return makeRequest('post', url, true, {exchangedBook: fixtures.copy1.id}).then(res => this.res = res);
             });
 
             it("Should return a 200 status", function () {
@@ -874,122 +931,95 @@ describe("API Integration Tests", function () {
 
     });
 
-    // describe("Decline a trade request", function () {
+    describe("Decline a trade request", function () {
 
-    //     let payload = {action: "decline"};
+        describe("That does not exist", function () {
 
-    //     describe("That does not exist", function () {
+            before(function () {
+                let url = '/api/books/' + fixtures.newBook.id + '/requests/999';
+                return makeRequest('delete', url, true, false).then(res => this.res = res);
+            });
 
-    //         before(function () {
-    //             let url = '/api/books/' + fixtures.newBook.id + '/requests/999';
-    //             return makeRequest('patch', url, true, payload).then(res => this.res = res);
-    //         });
+            it("Should return a status 404 response", function () {
+                expect(this.res).to.have.a.status(404);
+            });
+        });
 
-    //         it("Should return a status 404 response", function () {
-    //             expect(this.res).to.have.a.status(404);
-    //         });
-    //     });
+        describe("As an unauthenticated user", function () {
 
-    //     describe("With an invalid action", function () {
-
-    //         before(function () {
-    //             let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest2.id;
-    //             return makeRequest('patch', url, true, {action: "invalid"}).then(res => this.res = res);
-    //         });
-
-    //         it("Should return a status 401 response", function () {
-    //             expect(this.res).to.have.a.status(401);
-    //         });
-
-    //         it("Should return a JSON object", function () {
-    //             expect(this.res).to.be.json;
-    //         });
-
-    //         it("Should have a message field", function () {
-    //             expect(this.res.body.message).to.exist;
-    //         });
-
-    //         it("Should have the value \"Invalid action\" in the message field", function () {
-    //             expect(String(this.res.body.message)).to.equal("Invalid action");
-    //         });
-
-    //     });
-
-    //     describe("As an unauthenticated user", function () {
-
-    //         before(function () {
-    //             let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest2.id;
-    //             return makeRequest('patch', url, false, payload).then(res => this.res = res);
-    //         });
+            before(function () {
+                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest2.id;
+                return makeRequest('delete', url, false, false).then(res => this.res = res);
+            });
             
-    //         it("Should return a 403 status response", function () {
-    //             expect(this.res).to.have.a.status(403);
-    //         });
+            it("Should return a 403 status response", function () {
+                expect(this.res).to.have.a.status(403);
+            });
 
-    //         it("Should return a JSON object", function () {
-    //             expect(this.res).to.be.json;
-    //         });
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
 
-    //         it("Should have a error field", function () {
-    //             expect(this.res.body.error).to.exist;
-    //         });
+            it("Should have a error field", function () {
+                expect(this.res.body.error).to.exist;
+            });
 
-    //         it("Should have the value \"You must be logged in to modify a trade request\" in the error field", function () {
-    //             expect(this.res.body.error).to.equal('You must be logged in to modify a trade request');
-    //         });
+            it("Should have the value \"You must be logged in to modify a trade request\" in the error field", function () {
+                expect(this.res.body.error).to.equal('You must be logged in to modify a trade request');
+            });
 
-    //     });
+        });
 
-    //     describe("As an authenticated user who isn't the owner of the book", function () {
+        describe("As an authenticated user who isn't the owner of the book", function () {
 
-    //         before(function () {
-    //             let url = '/api/books/' + fixtures.copy3.id + '/requests/' + fixtures.request4.id;
-    //             return makeRequest('patch', url, true, payload).then(res => this.res = res);
-    //         });
+            before(function () {
+                let url = '/api/books/' + fixtures.copy3.id + '/requests/' + fixtures.request4.id;
+                return makeRequest('delete', url, true, false).then(res => this.res = res);
+            });
             
-    //         it("Should return a 403 status response", function () {
-    //             expect(this.res).to.have.a.status(403);
-    //         });
+            it("Should return a 403 status response", function () {
+                expect(this.res).to.have.a.status(403);
+            });
 
-    //         it("Should return a JSON object", function () {
-    //             expect(this.res).to.be.json;
-    //         });
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
 
-    //         it("Should have a error field", function () {
-    //             expect(this.res.body.error).to.exist;
-    //         });
+            it("Should have a error field", function () {
+                expect(this.res.body.error).to.exist;
+            });
 
-    //         it("Should have the value \"You do not have permission to modify that trade request\" in the error field", function () {
-    //             expect(this.res.body.error).to.equal('You do not have permission to modify that trade request');
-    //         });
-    //     });
+            it("Should have the value \"You do not have permission to modify that trade request\" in the error field", function () {
+                expect(this.res.body.error).to.equal('You do not have permission to modify that trade request');
+            });
+        });
 
-    //     describe("As an authenticated user, who owns the book", function () {
+        describe("As an authenticated user, who owns the book", function () {
             
-    //         before(function () {
-    //             let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest2.id;
-    //             return makeRequest('patch', url, true, payload).then(res => this.res = res);
-    //         });
+            before(function () {
+                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest2.id;
+                return makeRequest('delete', url, true, false).then(res => this.res = res);
+            });
 
-    //         it("Should return a 200 status", function () {
-    //             expect(this.res).to.have.a.status(200);
-    //         });
+            it("Should return a 200 status", function () {
+                expect(this.res).to.have.a.status(200);
+            });
 
-    //         it("Should return a JSON object", function () {
-    //             expect(this.res).to.be.json;
-    //         });
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
 
-    //         it("Should have a message field", function () {
-    //             expect(this.res.body.message).to.exist;
-    //         });
+            it("Should have a message field", function () {
+                expect(this.res.body.message).to.exist;
+            });
 
-    //         it("Should have a value of \"Request declined\" in the message field", function () {
-    //             expect(this.res.body.message).to.equal("Request declined");
-    //         });
+            it("Should have a value of \"Request declined\" in the message field", function () {
+                expect(this.res.body.message).to.equal("Request declined");
+            });
 
-    //     });
+        });
 
-    // });
+    });
 
     describe("Get a list of requests for a given user", function () {
 

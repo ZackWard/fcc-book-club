@@ -149,15 +149,42 @@ export function approveRequest(req, res) {
     };
 
     function verifyExchange(bookRequest) {
-        // The request should have a JSON field named "exchangedBook" that refers to a BookCopy that is available, and that is owned by the user who made the trade request
+        // The request should have a JSON field named "exchangedBook" that refers to a BookCopy that is 
+        // - owned by the person who made the traderequest, and 
+        // - is included in the list of offered books.
         return new Promise(function (resolve, reject) {
             if (typeof req.body.exchangedBook != "number") {
                 return reject({ code: 400, message: "The exchangedBook field must contain an integer."});
             }
-            models.bookCopy.findOne({where: {id: req.body.exchangedBook}, include: [ { model: models.User, attributes: ['username'] } ] })
-            .then(exchangedBook => {
+
+            let findBook = models.BookCopy.findOne({where: {id: req.body.exchangedBook}, include: [ { model: models.User, attributes: ['username'] } ] });
+            let findBooksOffered = bookRequest.getBooksOffered();
+            Promise.all([findBook, findBooksOffered])
+            .then(([exchangedBook, booksOffered]) => {
                 console.log("Exchanged book:");
                 console.log(JSON.stringify(exchangedBook, null, 2));
+                console.log("TradeRequest: ");
+                console.log(JSON.stringify(bookRequest, null, 2));
+                console.log("Books Offered:");
+                console.log(JSON.stringify(booksOffered, null, 2));
+
+                // If we couldn't find a BookCopy with the id given in "exchangedBook", return an error
+                if (exchangedBook == null) {
+                    return reject({code: 400, message: "You cannot exchange a book that doesn't exist."});
+                }
+
+                let offeredBookIDs = booksOffered.map(book => book.id);
+                console.log("Offered book IDs:");
+                console.log(offeredBookIDs);
+                if (offeredBookIDs.indexOf(exchangedBook.id) == -1) {
+                    console.log("You cannot exchange a book that wasn't offered!");
+                    return reject({code: 400, message: "The exchanged book must be one of the books that was offered."});
+                }
+
+                if (exchangedBook.user.username !== bookRequest.user.username) {
+                    console.log("The exchanged book must belong to the same user who made the trade request!");
+                    return reject({code: 400, message: "In order to exchange the book, the currently logged in user must own both the trade request and the exchanged book."});
+                }
                 
             })
             .catch(error => reject({code: 999, message: error}));
