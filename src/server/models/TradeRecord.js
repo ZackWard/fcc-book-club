@@ -1,6 +1,6 @@
 module.exports = function (sequelize, DataTypes) {
-    let TradeRecord = sequelize.define('tradeRequest', {
-        
+    let TradeRecord = sequelize.define('tradeRecord', {
+        shippingInstructions: { type: DataTypes.TEXT }
     }, {
         classMethods: {
             associate: function (models) {

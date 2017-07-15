@@ -14,11 +14,3 @@ module.exports = function (sequelize, DataTypes) {
     });
     return TradeRequest;
 };
-
-// John has "Book A", "Book B", and "Book C."
-// Luke has "Book X", "Book Y", and "Book Z."
-
-// John wants Book Z. He offers any of his books for trade.
-// Luke chooses Book B. The trade is complete.
-
-

@@ -744,12 +744,6 @@ describe("API Integration Tests", function () {
 
     describe("Approve a trade request", function () {
 
-        before(function (done) {
-            // We need a trade request from one of the fixture users to our new authenticated user
-            console.log(JSON.stringify(fixtures, null, 2));
-            done();
-        });
-
         describe("That does not exist", function () {
 
             before(function () {
@@ -905,10 +899,15 @@ describe("API Integration Tests", function () {
         });
 
         describe("As an authenticated user, who owns the book", function () {
-            
+        
+
             before(function () {
+                let payload = {
+                    exchangedBook: fixtures.copy1.id,
+                    shippingInstructions: "Ship me the book plz!"
+                };
                 let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest1.id;
-                return makeRequest('post', url, true, {exchangedBook: fixtures.copy1.id}).then(res => this.res = res);
+                return makeRequest('post', url, true, payload).then(res => this.res = res);
             });
 
             it("Should return a 200 status", function () {

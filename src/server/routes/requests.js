@@ -105,7 +105,7 @@ export function approveRequest(req, res) {
     let queryInclusions = [ 
         {
             model: models.User, 
-            attributes: ["username", "firstName", "lastName", "city", "state"]
+            attributes: ["id", "username", "firstName", "lastName", "city", "state"]
         },
         { 
             model: models.BookCopy, 
@@ -115,7 +115,7 @@ export function approveRequest(req, res) {
                 },
                 {
                     model: models.User,
-                    attributes: ["username", "firstName", "lastName", "city", "state"]
+                    attributes: ["id", "username", "firstName", "lastName", "city", "state"]
                 }
             ] 
         }
@@ -126,7 +126,7 @@ export function approveRequest(req, res) {
     .then(verifyPermission)
     .then(verifyExchange)
     .then(approveTradeRequest)
-    .then(saveModifiedRequest)
+    .then(sendResponse)
     .catch(error => {
         console.log(error);
         return res.status(error.code).json({message: error.message})
@@ -161,12 +161,6 @@ export function approveRequest(req, res) {
             let findBooksOffered = bookRequest.getBooksOffered();
             Promise.all([findBook, findBooksOffered])
             .then(([exchangedBook, booksOffered]) => {
-                console.log("Exchanged book:");
-                console.log(JSON.stringify(exchangedBook, null, 2));
-                console.log("TradeRequest: ");
-                console.log(JSON.stringify(bookRequest, null, 2));
-                console.log("Books Offered:");
-                console.log(JSON.stringify(booksOffered, null, 2));
 
                 // If we couldn't find a BookCopy with the id given in "exchangedBook", return an error
                 if (exchangedBook == null) {
@@ -174,29 +168,47 @@ export function approveRequest(req, res) {
                 }
 
                 let offeredBookIDs = booksOffered.map(book => book.id);
-                console.log("Offered book IDs:");
-                console.log(offeredBookIDs);
                 if (offeredBookIDs.indexOf(exchangedBook.id) == -1) {
-                    console.log("You cannot exchange a book that wasn't offered!");
                     return reject({code: 400, message: "The exchanged book must be one of the books that was offered."});
                 }
 
                 if (exchangedBook.user.username !== bookRequest.user.username) {
-                    console.log("The exchanged book must belong to the same user who made the trade request!");
                     return reject({code: 400, message: "In order to exchange the book, the currently logged in user must own both the trade request and the exchanged book."});
                 }
+
+                return resolve([bookRequest, exchangedBook]);
                 
             })
             .catch(error => reject({code: 999, message: error}));
         });
     };
 
-    function approveTradeRequest(bookRequest) {
-        return [bookRequest, "Testing!"];
+    function approveTradeRequest([bookRequest, exchangedBook]) {
+        // Ok, here we need to actually make the trade happen
+        // Make a new TradeRecord
+        // Delete the TradeRequest
+        // Delete both books
+
+        let senderID = bookRequest.user.id,
+            senderBook = exchangedBook.bookId,
+            receiverID = bookRequest.bookCopy.user.id,
+            receiverBook = bookRequest.bookCopy.bookId;
+
+        return Promise.all([bookRequest.destroy(), bookRequest.bookCopy.destroy(), exchangedBook.destroy()])
+        .then(() => {
+            let newRecord = models.TradeRecord.build({shippingInstructions: req.body.shippingInstructions});
+            let options = {save: false};
+            newRecord.setTradeSender(senderID, options);
+            newRecord.setTradeSenderBook(senderBook, options);
+            newRecord.setTradeReceiver(receiverID, options);
+            newRecord.setTradeReceiverBook(receiverBook, options);
+            return newRecord.save();
+        })
+        .catch(error => error);
     };
 
-    function saveModifiedRequest([bookRequest, message]) {
-        return bookRequest.save().then(() => {res.json({message: message})}).catch(err => res.status(500).json(err));
+    function sendResponse(record) {
+        return res.json(record);
     };
 };
 
