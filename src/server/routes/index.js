@@ -30,6 +30,9 @@ router.route('/api/users/:username')
 router.route('/api/users/:username/books')
     .get(userRoutes.getUserBooks);
 
+router.route('/api/users/:username/records')
+    .get(userRoutes.getUserRecords);
+
 /**
  * Book Routes
  */

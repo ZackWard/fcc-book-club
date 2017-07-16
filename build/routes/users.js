@@ -47,6 +47,9 @@ function createUser(req, res) {
         username: String(req.body.username),
         password: ''
     };
+    // if (typeof req.body.password !== "string" || req.body.password.length < 8) {
+    //     return res.status(400).json({message: "The password must be at least 8 characters long"});
+    // }
     hashPassword(String(req.body.password))
         .then(hash => {
         newUser.password = hash;
@@ -154,4 +157,9 @@ function updateUser(req, res) {
     });
 }
 exports.updateUser = updateUser;
+;
+function getUserRecords(req, res) {
+    return res.json({ message: "Not implemented" });
+}
+exports.getUserRecords = getUserRecords;
 ;

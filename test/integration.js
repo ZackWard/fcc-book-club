@@ -98,7 +98,7 @@ describe("API Integration Tests", function () {
     
     before(function () {
         // Empty the database
-        return db.sequelize.sync({force: true, logging: console.log})
+        return db.sequelize.sync({force: true})
         .then(() => {
             console.log("Cleared database!");
             return buildDatabase();
@@ -922,8 +922,10 @@ describe("API Integration Tests", function () {
                 expect(this.res.body.message).to.exist;
             });
 
-            it("Should have a value of \"Request approved\" in the message field", function () {
-                expect(this.res.body.message).to.equal("Request approved");
+            let successMessage = "Request approved";
+
+            it("Should have a value of \"" + successMessage + "\" in the message field", function () {
+                expect(this.res.body.message).to.equal(successMessage);
             });
 
         });

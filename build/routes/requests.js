@@ -193,7 +193,7 @@ function approveRequest(req, res) {
     }
     ;
     function sendResponse(record) {
-        return res.json(record);
+        return res.json({ message: "Request approved", record });
     }
     ;
 }
