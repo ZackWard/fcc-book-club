@@ -1,5 +1,24 @@
 import * as models from "../models";
 
+let queryInclusions = [ 
+    {
+        model: models.User, 
+        attributes: ["id", "username", "firstName", "lastName", "city", "state"]
+    },
+    { 
+        model: models.BookCopy, 
+        include: [ 
+            {
+                model: models.Book
+            },
+            {
+                model: models.User,
+                attributes: ["id", "username", "firstName", "lastName", "city", "state"]
+            }
+        ] 
+    }
+];
+
 export function createRequest(req, res) {
     // Return early if user isn't authenticated
     if (! req.session.user) {
@@ -102,25 +121,6 @@ export function approveRequest(req, res) {
         return res.status(403).json({error: "You must be logged in to approve a trade request."});
     }
 
-    let queryInclusions = [ 
-        {
-            model: models.User, 
-            attributes: ["id", "username", "firstName", "lastName", "city", "state"]
-        },
-        { 
-            model: models.BookCopy, 
-            include: [ 
-                {
-                    model: models.Book
-                },
-                {
-                    model: models.User,
-                    attributes: ["id", "username", "firstName", "lastName", "city", "state"]
-                }
-            ] 
-        }
-    ];
-
     models.TradeRequest.findOne({where: { id: Number(req.params.requestId), bookCopyId: Number(req.params.bookId) }, include: queryInclusions })
     .then(verifyRequestFound)
     .then(verifyPermission)
@@ -214,4 +214,40 @@ export function approveRequest(req, res) {
 
 export function deleteRequest(req, res) {
 
+    // The delete request can come from either the owner of the trade request, in which case it will be cancelled, or the owner of the requested book,
+    // in which case it will be declined
+    models.TradeRequest.findOne({where: {id: req.params.requestId, bookCopyId: req.params.bookId}, include: queryInclusions })
+    .then(tradeRequest => {
+        if (tradeRequest == null) {
+            return Promise.reject({code: 404, message: "That trade request was not found."});
+        }
+
+        if (req.session.user == tradeRequest.bookCopy.user.username) {
+            tradeRequest.status = "declined";
+            return tradeRequest.save()
+            .then(() => {
+                return res.json({message: "Request declined."});
+            })
+            .catch(error => {
+                return Promise.reject({code: 500, message: "There was a problem saving the trade request"});
+            });
+        }
+
+        if (req.session.user == tradeRequest.user.username) {
+            tradeRequest.status = "cancelled";
+            return tradeRequest.save()
+            .then(() => {
+                return res.json({message: "Request cancelled."});
+            })
+            .catch(error => {
+                return Promise.reject({code: 500, message: "There was a problem saving the trade request."});
+            });
+        }
+
+        return Promise.reject({code: 403, message: "You do not have permission to modify this trade request."});
+
+    })
+    .catch(error => {
+        return res.status(error.code).json({error: error.message});
+    });
 };

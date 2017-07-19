@@ -9,6 +9,7 @@ import * as requestRoutes from "./requests";
 
 const router = express.Router();
 const rejectNonJSON = utils.rejectNonJSON;
+const requireAuthentication = utils.requireAuthentication;
 const parseJSON = bodyParser.json();
 
 /**
@@ -49,7 +50,7 @@ router.route('/api/books/:bookId/requests')
     .post(rejectNonJSON, parseJSON, requestRoutes.createRequest);
 
 router.route('/api/books/:bookId/requests/:requestId')
-    .delete(rejectNonJSON, parseJSON, requestRoutes.deleteRequest)
+    .delete(rejectNonJSON, parseJSON, requireAuthentication, requestRoutes.deleteRequest)
     .post(rejectNonJSON, parseJSON, requestRoutes.approveRequest);
 
 export default router;

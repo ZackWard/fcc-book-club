@@ -4,3 +4,10 @@ export const rejectNonJSON = function (req, res, next) {
     }
     next();
 };
+
+export const requireAuthentication = function (req, res, next) {
+    if ( ! req.session.user) {
+        return res.status(403).json({error: "You must be logged in to complete this request."});
+    }
+    next();
+};
