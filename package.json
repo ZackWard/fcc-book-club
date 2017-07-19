@@ -33,6 +33,7 @@
     "mustache": "^2.3.0",
     "sequelize": "^3.30.3",
     "sqlite": "^2.5.0",
+    "sqlite3": "^3.1.8",
     "vue": "^2.2.2",
     "vue-router": "^2.3.0",
     "vue-template-compiler": "^2.2.2",

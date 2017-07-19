@@ -5,6 +5,7 @@ var chai = require('chai');
 var chaiHttp = require('chai-http');
 var app = require('../build/book-club-server');
 var config = require('../build/config').default;
+var newFixtures = require('./fixtures.json');
 
 chai.use(chaiHttp);
 
@@ -12,6 +13,8 @@ let expect = chai.expect;
 let server = app.server;
 let db = app.models;
 let session = app.session;
+
+let fixtures = {};
 
 // We'll use an agent so that when we login, cookies will be saved and reused with the next request
 let agent = chai.request.agent(server);
@@ -31,83 +34,114 @@ function makeRequest(method, url, useAgent = false, payload = false) {
     });
 };
 
-describe("API Integration Tests", function () {
-
-    let createdBookID; // We'll store the ID when we create a book, that way we can edit it later
-    let fixtures;
-
-    function makeBook(user, book) {
-        let newBook = db.BookCopy.build({available: true});
-        newBook.setBook(book, {save: false});
-        newBook.setUser(user, {save: false});
-        return newBook;
-    };
-
-    function buildRequest(status, bookCopy, user) {
-        let newRequest = db.TradeRequest.build({ status: status });
-        newRequest.setUser(user, { save: false });
-        newRequest.setBookCopy(bookCopy, { save: false });
-        return newRequest;
-    };
-
-    function buildDatabase() {
-        return new Promise(function (resolve, reject) {
-            let user1p = db.User.create({username: "fakeuser1", password: "$2a$10$d/2xu830XZvcdWguJpIsXuu4xhrpBv7wU9JiTH1n3Ny00D/QAyiIq"});
-            let user2p = db.User.create({username: "fakeuser2", password: "$2a$10$d/2xu830XZvcdWguJpIsXuu4xhrpBv7wU9JiTH1n3Ny00D/QAyiIq"});
-            let user3p = db.User.create({username: "fakeuser3", password: "$2a$10$d/2xu830XZvcdWguJpIsXuu4xhrpBv7wU9JiTH1n3Ny00D/QAyiIq"});
-            let book1p = db.Book.create({title: "Fake Book One"});
-            let book2p = db.Book.create({title: "Fake Book Two"});
-            let book3p = db.Book.create({title: "Fake Book Three"});
-            Promise.all([user1p, user2p, user3p, book1p, book2p, book3p])
-            .then(([user1, user2, user3, book1, book2, book3]) => {
-                fixtures = {user1, user2, user3, book1, book2, book3};
-                fixtures.copy1 = makeBook(fixtures.user1, fixtures.book1);
-                fixtures.copy2 = makeBook(fixtures.user1, fixtures.book2);
-                fixtures.copy3 = makeBook(fixtures.user2, fixtures.book3);
-                fixtures.copy4 = makeBook(fixtures.user3, fixtures.book1);
-                return Promise.all([fixtures.copy1.save(), fixtures.copy2.save(), fixtures.copy3.save(), fixtures.copy4.save()]);
-            })
-            .then(() => {
-                let updateUser1 = fixtures.user1.reload({include: [db.BookCopy]});
-                let updateUser2 = fixtures.user2.reload({include: [db.BookCopy]});
-                let updateUser3 = fixtures.user3.reload({include: [db.BookCopy]});
-                return Promise.all([updateUser1, updateUser2, updateUser3]);
-            })
-            .then(() => {
-                fixtures.request1 = buildRequest("requested", fixtures.copy1, fixtures.user2);
-                fixtures.request2 = buildRequest("requested", fixtures.copy2, fixtures.user2);
-                fixtures.request3 = buildRequest("requested", fixtures.copy3, fixtures.user1);
-                fixtures.request4 = buildRequest("requested", fixtures.copy3, fixtures.user3);
-                return Promise.all([fixtures.request1.save(), fixtures.request2.save(), fixtures.request3.save(), fixtures.request4.save()]);
-            })
-            .then(() => {
-                // Attach every book that the user owns to the trade offer
-                let p1 = fixtures.request1.setBooksOffered(fixtures.user2.bookCopies);
-                let p2 = fixtures.request2.setBooksOffered(fixtures.user2.bookCopies);
-                let p3 = fixtures.request3.setBooksOffered(fixtures.user1.bookCopies);
-                let p4 = fixtures.request4.setBooksOffered(fixtures.user3.bookCopies);
-                return Promise.all([p1, p2, p3, p4]);
-            })
-            .then(([r1, r2, r3, r4]) => {
-                console.log("Database set up");
-                resolve();
-            })
-            .catch(error => reject(error));
-        });
+async function makeAuthenticatedRequest(method, url, useAgent = true, payload = false) {
+    try {
+        await authenticateUser();
     }
-    
-    before(function () {
-        // Empty the database
-        return db.sequelize.sync({force: true})
-        .then(() => {
-            console.log("Cleared database!");
-            return buildDatabase();
+    catch (e) {
+        throw new Error(e);
+    }
+    return makeRequest(method, url, true, payload);
+}
+
+async function buildUsers(fixtures) {
+    for (var user in fixtures.users) {
+        try {
+            fixtures.users[user] = await db.User.create(fixtures.users[user]);
+        }
+        catch (e) {
+            throw new Error(e);
+        }
+    }
+    return fixtures;
+}
+
+async function buildBooks(fixtures) {
+    for (var book in fixtures.books) {
+        try {
+            fixtures.books[book] = await db.Book.create(fixtures.books[book]);
+        } 
+        catch (e) {
+            throw new Error(e);
+        }
+    }
+    return fixtures;
+}
+
+async function buildBookCopies(fixtures) {
+    for (var bookcopy in fixtures.bookcopies) {
+        let thisCopy = fixtures.bookcopies[bookcopy];
+        let newBookCopy = db.BookCopy.build({});
+        newBookCopy.setUser(fixtures.users[thisCopy.user].id, {save: false});
+        newBookCopy.setBook(fixtures.books[thisCopy.book].id, {save: false});
+        try {
+            fixtures.bookcopies[bookcopy] = await newBookCopy.save();
+        }
+        catch (e) {
+            throw new Error(e);
+        }
+    }
+    return fixtures;
+}
+
+async function buildRequests(fixtures) {
+
+    for (var request in fixtures.requests) {
+        let thisRequest = fixtures.requests[request];
+        let newRequest = db.TradeRequest.build({status: "requested"});
+        newRequest.setUser(fixtures.users[thisRequest.user].id, {save: false});
+        newRequest.setBookCopy(fixtures.bookcopies[thisRequest.bookcopy].id, {save: false});
+        try {
+            newRequest = await newRequest.save();
+        }
+        catch (e) {
+            throw new Error(e);
+        }
+        let booksOffered = thisRequest.booksoffered.map(bookoffered => fixtures.bookcopies[bookoffered].id);
+        try {
+            await newRequest.setBooksOffered(booksOffered);
+        }
+        catch (e) {
+            throw new Error(e);
+        }
+        
+        fixtures.requests[request] = newRequest;
+    }
+
+    return fixtures;
+}
+
+function resetDatabase(logging = false) {
+    console.log("Resetting database!");
+    return new Promise(function (resolve, reject) {
+        db.sequelize.sync({force: true, logging})
+        .then(() => JSON.parse(JSON.stringify(newFixtures)))
+        .then(buildUsers)
+        .then(buildBooks)
+        .then(buildBookCopies)
+        .then(buildRequests)
+        .then(resetFixtures => {
+            console.log("Database reset!");
+            fixtures = resetFixtures;
+            return resolve(resetFixtures)
         })
-        .catch((error) => {
-            console.log(error);
-            return Promise.reject("Error!");
-        });
+        .catch(error => reject(error));
     });
+}
+
+async function authenticateUser() {
+    let payload = {username: "fakeuser1", password: "password"};
+    let response;
+    try {
+        response = await makeRequest('post', '/api/users/login', true, payload);
+    }
+    catch (e) {
+        throw new Error(e);
+    }
+    return response;
+}
+
+describe("API Integration Tests", function () {
 
     describe("Create a new user", function () {
 
@@ -115,6 +149,10 @@ describe("API Integration Tests", function () {
             username: 'zack2',
             password: 'zack2'
         };
+
+        before(function () {
+            return resetDatabase();
+        });
 
         describe("When given a valid username and password", function () {
 
@@ -133,7 +171,6 @@ describe("API Integration Tests", function () {
             it("Should actually create a new user in the database", function () {
                 return db.User.findOne({where: { username: userData.username } })
                 .then(user => {
-                    fixtures.newUser = user;
                     expect(user).not.to.be.null;
                 });
             });
@@ -177,9 +214,13 @@ describe("API Integration Tests", function () {
 
     describe("Login", function () {
 
+        before(function () {
+            return resetDatabase();
+        });
+
         describe("When given an invalid username and/or password", function () {
 
-            let payload = {username: "zack2", password: "incorrect"};
+            let payload = {username: "fakeuser1", password: "incorrect"};
 
             before(function () {
                 return makeRequest('post', '/api/users/login', false, payload).then(res => this.res = res);
@@ -192,7 +233,7 @@ describe("API Integration Tests", function () {
 
         describe("When provided with a valid username and password", function () {
 
-            let payload = {username: "zack2", password: "zack2"};
+            let payload = {username: "fakeuser1", password: "password"};
 
             before(function () {
                 // Use the chai-http agent, so that cookies will be preserved for future requests
@@ -227,16 +268,31 @@ describe("API Integration Tests", function () {
 
     describe("Update a user's profile and password ", function () {
 
+        before(function () {
+            return resetDatabase();
+        });
+
         let updateData = { first_name: "Zachary", last_name: "Ward", password: "zack3", city: "Monte Vista", state: "Colorado" };
 
         describe("When authenticated, and attemtping to update your own account", function () {
 
             before(function () {
-                return makeRequest('patch', '/api/users/zack2', true, updateData).then(res => this.res = res);
+                return authenticateUser()
+                    .then(() => makeRequest('patch', '/api/users/fakeuser1', true, updateData))
+                    .then(res => this.res = res);
             });
 
             it("Should return a status 200", function () {
                 expect(this.res).to.have.a.status(200);
+            });
+
+            it("Should actually change the user's information in the database", function () {
+                return fixtures.users.fakeuser1.reload().then(() => {
+                    expect(fixtures.users.fakeuser1.firstName).to.equal(updateData.first_name);
+                    expect(fixtures.users.fakeuser1.lastName).to.equal(updateData.last_name);
+                    expect(fixtures.users.fakeuser1.city).to.equal(updateData.city);
+                    expect(fixtures.users.fakeuser1.state).to.equal(updateData.state);
+                });
             });
         });
 
@@ -253,15 +309,6 @@ describe("API Integration Tests", function () {
 
             it("Should return a JSON object", function () {
                 expect(this.res).to.be.json;
-            });
-
-            it("Should actually change the user's information in the database", function () {
-                return fixtures.newUser.reload().then(() => {
-                    expect(fixtures.newUser.firstName).to.equal(updateData.first_name);
-                    expect(fixtures.newUser.lastName).to.equal(updateData.last_name);
-                    expect(fixtures.newUser.city).to.equal(updateData.city);
-                    expect(fixtures.newUser.state).to.equal(updateData.state);
-                });
             });
         });
     });
@@ -296,7 +343,10 @@ describe("API Integration Tests", function () {
 
             before(function () {
                 // Use the agent, which is authenticated to the zack2 account
-                return makeRequest('post', '/api/books', true, newBook).then(res => this.res = res);
+                return resetDatabase()
+                    .then(() => {
+                        return makeAuthenticatedRequest('post', '/api/books', true, newBook).then(res => this.res = res);
+                    });
             });
 
             it('Should return a status 200', function () {
@@ -338,7 +388,7 @@ describe("API Integration Tests", function () {
                 let queryInclusions = [
                     {
                         model: db.User,
-                        where: {username: fixtures.newUser.username}
+                        where: {username: fixtures.users.fakeuser1.username}
                     },
                     {
                         model: db.Book,
@@ -363,10 +413,14 @@ describe("API Integration Tests", function () {
 
     describe("Update a book", function () {
 
+        before(function () {
+            return resetDatabase();
+        });
+
         describe("As an unauthenticated user", function () {
 
             before(function () {
-                return makeRequest('patch', '/api/books/' + createdBookID, false, {available: false}).then(res => this.res = res);
+                return makeRequest('patch', '/api/books/' + fixtures.bookcopies.copy1.id, false, {available: false}).then(res => this.res = res);
             });
 
             it("Should return a status 401", function () {
@@ -377,7 +431,7 @@ describe("API Integration Tests", function () {
         describe("As an authenticated user attempting to update a book that I do not own", function () {
             
             before(function () {
-                return makeRequest('patch', '/api/books/1', true, {available: false}).then(res => this.res = res);
+                return makeAuthenticatedRequest('patch', '/api/books/' + fixtures.bookcopies.copy3.id, true, {available: false}).then(res => this.res = res);
             });
 
             it("Should return a status 401 response", function () {
@@ -388,7 +442,7 @@ describe("API Integration Tests", function () {
         describe("As an authenticated user attempting to update a book that I own", function () {
 
             before(function () {
-                return makeRequest('patch', '/api/books/' + createdBookID, true, {available: false}).then(res => this.res = res);
+                return makeAuthenticatedRequest('patch', '/api/books/' + fixtures.bookcopies.copy1.id, true, {available: false}).then(res => this.res = res);
             });
 
             it("Should respond with a status 200", function () {
@@ -412,10 +466,7 @@ describe("API Integration Tests", function () {
     describe("Retrieve a list of books", function () {
 
         before(function () {
-            let newTradeRequest = db.TradeRequest.build({status: "requested"});
-            newTradeRequest.setBookCopy(fixtures.copy1, {save: false});
-            newTradeRequest.setUser(fixtures.newUser, {save: false});
-            return newTradeRequest.save()
+            return resetDatabase();
         });
 
         describe("As an unauthenticated user", function () {
@@ -436,15 +487,17 @@ describe("API Integration Tests", function () {
                 expect(Array.isArray(this.res.body)).to.be.true;
             });
 
-            it("Should have 5 books in the array", function () {
-                expect(this.res.body).to.be.lengthOf(5);
+            let numberOfBooks = Object.keys(newFixtures.bookcopies).length;
+
+            it("Should have " + numberOfBooks + " books in the array", function () {
+                expect(this.res.body).to.be.lengthOf(numberOfBooks);
             });
         });
 
-        describe("When the owner=zack2 query parameter is passed", function () {
+        describe("When the owner=fakeuser1 query parameter is passed", function () {
 
             before(function () {
-                return makeRequest('get', '/api/books?owner=zack2', true, false).then(res => this.res = res);
+                return makeRequest('get', '/api/books?owner=fakeuser1', true, false).then(res => this.res = res);
             });
 
             it("Should return a status 200 response", function () {
@@ -459,12 +512,12 @@ describe("API Integration Tests", function () {
                 expect(Array.isArray(this.res.body)).to.be.true;
             });
 
-            it("Should have 1 book in the array", function () {
-                expect(this.res.body).to.be.lengthOf(1);
+            it("Should have 2 books in the array", function () {
+                expect(this.res.body).to.be.lengthOf(2);
             });
 
-            it("Should not return books owned by anybody other than zack2", function () {
-                let incorrectEntries = this.res.body.filter(book => book.owner != "zack2");
+            it("Should not return books owned by anybody other than fakeuser1", function () {
+                let incorrectEntries = this.res.body.filter(book => book.owner != "fakeuser1");
                 expect(incorrectEntries).to.have.lengthOf(0);
             });
         });
@@ -472,7 +525,7 @@ describe("API Integration Tests", function () {
         describe("When the includeRequests=true query paramater is passed", function () {
 
             before(function () {
-                return makeRequest('get', '/api/books?includeRequests=true', true, false).then(res => this.res = res);
+                return makeAuthenticatedRequest('get', '/api/books?includeRequests=true', true, false).then(res => this.res = res);
             });
 
             it("Should return a 200 status", function () {
@@ -489,7 +542,7 @@ describe("API Integration Tests", function () {
 
             it("Should include a requests element, that is either an array or a number, in every array item.", function () {
                 this.res.body.forEach(book => {
-                    if (book.owner == "zack2") {
+                    if (book.owner == "fakeuser1") {
                         expect(Array.isArray(book.requests)).to.be.true;
                     } else {
                         expect(book.requests).to.be.a('number');
@@ -502,12 +555,12 @@ describe("API Integration Tests", function () {
         describe("When the user has already requested a book in the list", function () {
 
             before(function () {
-                return makeRequest('get', '/api/books', true, false).then(res => this.res = res);
+                return makeAuthenticatedRequest('get', '/api/books', true, false).then(res => this.res = res);
             });
 
             it("Should have a requestedByCurrentUser field with a value of true", function () {
                 // fixtures.copy1 is the book that we set a request up for
-                let target = this.res.body.filter(book => book.id == fixtures.copy1.id)[0];
+                let target = this.res.body.filter(book => book.id == fixtures.bookcopies.copy3.id)[0];
                 expect(target.requestedByCurrentUser).to.exist;
                 expect(target.requestedByCurrentUser).to.equal(true);
             });
@@ -515,6 +568,10 @@ describe("API Integration Tests", function () {
     });    
 
     describe("Make a new trade request", function () {
+
+        before(function () {
+            return resetDatabase();
+        });
 
         describe('As an unauthenticated user', function () {
 
@@ -535,7 +592,7 @@ describe("API Integration Tests", function () {
         describe("As an authenticated user, when making a trade request without offering books in exchange", function () {
 
             before(function () {
-                return makeRequest('post', '/api/books/' + createdBookID + '/requests', true, false).then(res => this.res = res);
+                return makeAuthenticatedRequest('post', '/api/books/' + fixtures.bookcopies.copy4.id + '/requests', true, false).then(res => this.res = res);
             });
 
             it("Should return a 403 status response", function () {
@@ -561,7 +618,7 @@ describe("API Integration Tests", function () {
         describe("As an authenticated user, when making a trade request, offering a book that you do not own", function () {
 
             before(function () {
-                return makeRequest('post', '/api/books/1/requests', true, {booksOffered: [99]}).then(res => this.res = res);
+                return makeRequest('post', '/api/books/' + fixtures.bookcopies.copy4.id + '/requests', true, {booksOffered: [99]}).then(res => this.res = res);
             });
 
             it("Should return a 403 status response", function () {
@@ -588,9 +645,9 @@ describe("API Integration Tests", function () {
 
             before(function () {
                 let payload = {
-                    booksOffered: [ createdBookID ]
+                    booksOffered: [ fixtures.bookcopies.copy2.id ]
                 };
-                return makeRequest('post', '/api/books/' + createdBookID + '/requests', true, payload).then(res => this.res = res);
+                return makeAuthenticatedRequest('post', '/api/books/' + fixtures.bookcopies.copy1.id + '/requests', true, payload).then(res => this.res = res);
             });
 
             it("Should return a 403 status response", function () {
@@ -617,9 +674,9 @@ describe("API Integration Tests", function () {
 
             before(function () {
                 let payload = {
-                    booksOffered: [ createdBookID ]
+                    booksOffered: [ fixtures.bookcopies.copy2.id ]
                 };
-                return makeRequest('post', '/api/books/1/requests', true, payload).then(res => this.res = res);
+                return makeAuthenticatedRequest('post', '/api/books/' + fixtures.bookcopies.copy4.id + '/requests', true, payload).then(res => this.res = res);
             });
 
             it("Should return a 200 status response", function () {
@@ -642,11 +699,14 @@ describe("API Integration Tests", function () {
 
     describe("Get a list of trade requests for a given book", function () {
 
+        before(function () {
+            return resetDatabase();
+        });
+
         describe("As an unauthenticated user", function () {
 
-            // use fixtures.copy3
             before(function () {
-                return makeRequest('get', '/api/books/' + fixtures.copy3.id + '/requests', false, false).then(res => this.res = res);
+                return makeRequest('get', '/api/books/' + fixtures.bookcopies.copy3.id + '/requests', false, false).then(res => this.res = res);
             });
 
             it("Should return a 200 response code", function () {
@@ -673,9 +733,8 @@ describe("API Integration Tests", function () {
 
         describe("As an authenticated user that doesn't own the book", function () {
 
-            // use fixtures.copy3, use the authenticated agent
             before(function () {
-                return makeRequest('get', '/api/books/' + fixtures.copy3.id + '/requests', true, false).then(res => this.res = res);
+                return makeAuthenticatedRequest('get', '/api/books/' + fixtures.bookcopies.copy3.id + '/requests', true, false).then(res => this.res = res);
             });
 
             it("Should return a 200 response code", function () {
@@ -703,20 +762,7 @@ describe("API Integration Tests", function () {
         describe("As an authenticated user that owns the book", function () {
 
             before(function () {
-                // Insert a couple of requests into the database
-                fixtures.newRequest1 = db.TradeRequest.build({status: "requested"});
-                fixtures.newRequest1.setUser(fixtures.user1, {save: false});
-                fixtures.newRequest1.setBookCopy(fixtures.newBook, {save: false});
-                fixtures.newRequest2 = db.TradeRequest.build({status: "requested"});
-                fixtures.newRequest2.setUser(fixtures.user2, {save: false});
-                fixtures.newRequest2.setBookCopy(fixtures.newBook, {save: false});
-                return Promise.all([fixtures.newRequest1.save(), fixtures.newRequest2.save()])
-                .then(() => {
-                    return fixtures.newRequest1.setBooksOffered([fixtures.copy1.id, fixtures.copy2.id]);
-                })
-                .then(([r1, r2]) => {
-                    return makeRequest('get', '/api/books/' + fixtures.newBook.id + '/requests', true, false).then(res => this.res = res);
-                });
+                return makeAuthenticatedRequest('get', '/api/books/' + fixtures.bookcopies.copy1.id + '/requests', true, false).then(res => this.res = res);
             });
             
             it("Should return a 200 status response", function () {
@@ -742,12 +788,16 @@ describe("API Integration Tests", function () {
         });
     });
 
-    describe("Approve a trade request", function () {
+    describe.only("Approve a trade request", function () {
+
+        before(function () {
+            return resetDatabase();
+        });
 
         describe("That does not exist", function () {
 
             before(function () {
-                let url = '/api/books/' + fixtures.newBook.id + '/requests/999';
+                let url = '/api/books/' + fixtures.bookcopies.copy1.id + '/requests/999';
                 return makeRequest('post', url, true, {action: "approve"}).then(res => this.res = res);
             });
 
@@ -759,8 +809,8 @@ describe("API Integration Tests", function () {
         describe("Without choosing a book to exchange", function () {
 
             before(function () {
-                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest2.id;
-                return makeRequest('post', url, true, false).then(res => this.res = res);
+                let url = '/api/books/' + fixtures.bookcopies.copy2.id + '/requests/' + fixtures.requests.request2.id;
+                return makeAuthenticatedRequest('post', url, true, false).then(res => this.res = res);
             });
 
             it("Should return a status 400 response", function () {
@@ -790,7 +840,7 @@ describe("API Integration Tests", function () {
             };
 
             before(function () {
-                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest1.id;
+                let url = '/api/books/' + fixtures.bookcopies.copy2.id + '/requests/' + fixtures.requests.request2.id;
                 return makeRequest('post', url, false, payload).then(res => this.res = res);
             });
             
@@ -814,15 +864,14 @@ describe("API Integration Tests", function () {
 
         });
 
-        describe("As an authenticated user who isn't the owner of the book", function () {
-
-            let payload = {
-                exchangedBook: 5
-            };
+        describe("As an authenticated user who isn't the owner of the book that has been requested", function () {
 
             before(function () {
-                let url = '/api/books/' + fixtures.copy3.id + '/requests/' + fixtures.request4.id;
-                return makeRequest('post', url, true, payload).then(res => this.res = res);
+                let url = '/api/books/' + fixtures.bookcopies.copy3.id + '/requests/' + fixtures.requests.request3.id;
+                let payload = {
+                    exchangedBook: fixtures.bookcopies.copy1.id
+                };
+                return makeAuthenticatedRequest('post', url, true, payload).then(res => this.res = res);
             });
             
             it("Should return a 403 status response", function () {
@@ -847,8 +896,8 @@ describe("API Integration Tests", function () {
         describe("As an authenticated user, who owns the book, but with an invalid exchangedBook", function () {
 
              before(function () {
-                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest1.id;
-                return makeRequest('post', url, true, {exchangedBook: 99}).then(res => this.res = res);
+                let url = '/api/books/' + fixtures.bookcopies.copy2.id + '/requests/' + fixtures.requests.request2.id;
+                return makeAuthenticatedRequest('post', url, true, {exchangedBook: 99}).then(res => this.res = res);
             });
 
             it("Should return a 400 status", function () {
@@ -874,8 +923,8 @@ describe("API Integration Tests", function () {
         describe("As an authenticated user, who owns the book, when attempting to exchange a book that wasn't offered", function () {
             
             before(function () {
-                let url = '/api/books/' + fixtures.newBook.id + '/requests/' + fixtures.newRequest1.id;
-                return makeRequest('post', url, true, {exchangedBook: 5}).then(res => this.res = res);
+                let url = '/api/books/' + fixtures.bookcopies.copy2.id + '/requests/' + fixtures.requests.request2.id;
+                return makeAuthenticatedRequest('post', url, true, {exchangedBook: fixtures.bookcopies.copy5.id}).then(res => this.res = res);
             });
 
             it("Should return a 400 status", function () {
@@ -1105,5 +1154,14 @@ describe("API Integration Tests", function () {
                 });
             });
         });
+    });
+
+    describe("Retrieve user records", function () {
+
+        before(function () {
+            return resetDatabase();
+        });
+
+        it("Should return user records");
     });
 });

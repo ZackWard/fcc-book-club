@@ -154,5 +154,12 @@ export function updateUser(req, res) {
 };
 
 export function getUserRecords(req, res) {
+    models.User.findOne({ where: {username: String(req.params.username)} })
+    .then(user => models.TradeRecord.find({where: {id: user.id}}))
+    .then(records => {
+        console.log(records);
+        return res.json(records);
+    })
+    .catch(error => res.status(error.code).json(error.message));
     return res.json({message: "Not implemented"});
 };
