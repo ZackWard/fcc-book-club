@@ -120,7 +120,7 @@ export function deleteBook(req, res) {
         if (req.session.user === book.user.username) {
             return book.destroy().then(() => res.json({message: "Book deleted"}));
         } else {
-            return res.status(401).json({error: "You do not have permission to delete this book."});
+            return res.status(403).json({error: "You do not have permission to delete this book."});
         }
     })
     .catch(error => res.status(404).json({error: "Book not found."}));

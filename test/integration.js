@@ -981,7 +981,7 @@ describe("API Integration Tests", function () {
 
     });
 
-    describe("Decline a trade request", function () {
+    describe("Cancel or Decline a trade request", function () {
 
         before(function () {
             return resetDatabase();
@@ -1122,76 +1122,110 @@ describe("API Integration Tests", function () {
 
     });
 
-    describe("Get a list of requests for a given user", function () {
+    describe.only("Get a list of requests for a given user", function () {
+
+        before(function () {
+            return resetDatabase();
+        });
 
         describe("As an unauthenticated user", function () {
 
-            it("Should return an error");
+            before(function () {
+                return makeRequest("get", "/api/users/" + fixtures.users.fakeuser1.username + "/requests", false, false).then(res => this.res = res);
+            });
+
+            it("Should return an error with status code 403", function () {
+                expect(this.res).to.have.status(403);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have an error field", function () {
+                expect(this.res.body.error).to.exist;
+            });
+
+            let errorMessage = "You must be logged in to complete this request.";
+
+            it("Should return the error message: " + errorMessage, function () {
+                expect(this.res.body.error).to.equal(errorMessage);
+            });
 
         });
 
-        describe("As an authenticated user, but not the user requested", function () {
+        describe("As an authenticated user, but not as the user requested", function () {
 
-            it("Should return an error");
+            before(function () {
+                return makeAuthenticatedRequest("get", "/api/users/" + fixtures.users.fakeuser2.username + "/requests", false, false).then(res => this.res = res);
+            });
+
+            it("Should return an error with status code 403", function () {
+                expect(this.res).to.have.status(403);
+            });
+
+            it("Should return a JSON object", function () {
+                expect(this.res).to.be.json;
+            });
+
+            it("Should have an error field", function () {
+                expect(this.res.body.error).to.exist;
+            });
+
+            let errorMessage = "You do not have permissions to view this information.";
+
+            it("Should return the error message: " + errorMessage, function () {
+                expect(this.res.body.error).to.equal(errorMessage);
+            });
 
         });
 
         describe("As an authenticated user, the user that was requested", function () {
 
-            it("Should return the list of requests");
+            before(function () {
+                return makeAuthenticatedRequest("get", "/api/users/" + fixtures.users.fakeuser1.username + "/requests", false, false).then(res => this.res = res);
+            });
 
-        });
-    });
-
-    describe("Delete/cancel a book request", function () {
-
-        describe("As an unauthenticated user", function () {
-
-            it("Should return an error");
-
-        });
-
-        describe("As an authenticated user that doesn't own the request", function () {
-
-            it("Should return an error");
-
-        });
-
-        describe("As an authenticated user that owns the request", function () {
-
-            it("Should delete/cancel the request");
+            it("Should return the list of requests", function () {
+                console.log(this.res.body);
+                expect(true).to.be.false;
+            });
 
         });
     });
 
     describe("Delete a book", function () {
 
+        before(function () {
+            return resetDatabase();
+        });
+
         describe("As an unauthenticated user", function () {
 
             before(function () {
-                return makeRequest('delete', '/api/books/' + createdBookID, false, false).then(res => this.res = res);
+                return makeRequest('delete', '/api/books/' + fixtures.bookcopies.copy1.id, false, false).then(res => this.res = res);
             });
 
-            it("Should return a status 401 response", function () {
-                expect(this.res).to.have.status(401);
+            it("Should return a status 403 response", function () {
+                expect(this.res).to.have.status(403);
             });
         });
 
         describe("As an authenticated user who doesn't own the book", function () {
 
             before(function () {
-                return makeRequest('delete', '/api/books/1', true, false).then(res => this.res = res);
+                return makeAuthenticatedRequest('delete', '/api/books/' + fixtures.bookcopies.copy3.id, true, false).then(res => this.res = res);
             });
             
-            it("Should return a status 401 response", function () {
-                expect(this.res).to.have.a.status(401);
+            it("Should return a status 403 response", function () {
+                expect(this.res).to.have.a.status(403);
             });
         });
 
         describe("As an authenticated user who owns the book", function () {
 
             before(function () {
-                return makeRequest('delete', '/api/books/' + createdBookID, true).then(res => this.res = res);
+                return makeAuthenticatedRequest('delete', '/api/books/' + fixtures.bookcopies.copy1.id, true).then(res => this.res = res);
             });
 
             it("Should return a 200 status response", function () {
@@ -1199,7 +1233,7 @@ describe("API Integration Tests", function () {
             });
 
             it("Should actually remove the book from the database", function () {
-                db.BookCopy.findOne({ where: {id: createdBookID} })
+                db.BookCopy.findOne({ where: {id: fixtures.bookcopies.copy1.id} })
                 .then(book => {
                     expect(book).to.be.null;
                 });

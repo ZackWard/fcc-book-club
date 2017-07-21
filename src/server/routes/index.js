@@ -31,6 +31,9 @@ router.route('/api/users/:username')
 router.route('/api/users/:username/books')
     .get(userRoutes.getUserBooks);
 
+router.route('/api/users/:username/requests')
+    .get(requireAuthentication, userRoutes.getUserRequests);
+
 router.route('/api/users/:username/records')
     .get(userRoutes.getUserRecords);
 
@@ -43,7 +46,7 @@ router.route('/api/books')
 
 router.route('/api/books/:bookId')
     .patch(rejectNonJSON, parseJSON, bookRoutes.editBook)
-    .delete(rejectNonJSON, parseJSON, bookRoutes.deleteBook);
+    .delete(rejectNonJSON, parseJSON, requireAuthentication, bookRoutes.deleteBook);
 
 router.route('/api/books/:bookId/requests')
     .get(rejectNonJSON, parseJSON, requestRoutes.getRequests)

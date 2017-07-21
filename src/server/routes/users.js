@@ -84,39 +84,6 @@ export function getUser(req, res) {
         });
 };
 
-export function getUserBooks(req, res) {
-    models.User.findOne({where: { username: String(req.params.username) } })
-    .then(user => {
-        if (user == null) {
-            return Promise.reject(new Error('User not found'));
-        } else {
-            return models.BookCopy.findAll({where: {userId: user.id}, include: [models.Book, models.LoanRequest] });
-        }
-    })
-    .then(books => {
-        console.log(JSON.stringify(books));
-        return books.map(book => {
-            return {
-                id: book.id,
-                status: book.status,
-                title: book.book.title,
-                subtitle: book.book.subtitle,
-                authors: book.book.authors,
-                description: book.book.description,
-                image: book.book.image,
-                requests: book.loanRequests.map(bookRequest => bookRequest)
-            };
-        });
-    })
-    .then(books => {
-        return res.json(books);
-    })
-    .catch(error => {
-        console.log(error);
-        return res.status(500).json({error: error.toString()});
-    });
-}
-
 export function updateUser(req, res) {
     // Return early if user is not logged on, or if the request is to update any user other than the one currently logged on
     if ( ! req.session.user || req.session.user != String(req.params.username)) {
@@ -153,6 +120,60 @@ export function updateUser(req, res) {
     });
 };
 
+export function getUserBooks(req, res) {
+    models.User.findOne({where: { username: String(req.params.username) } })
+    .then(user => {
+        if (user == null) {
+            return Promise.reject(new Error('User not found'));
+        } else {
+            return models.BookCopy.findAll({where: {userId: user.id}, include: [models.Book, models.LoanRequest] });
+        }
+    })
+    .then(books => {
+        console.log(JSON.stringify(books));
+        return books.map(book => {
+            return {
+                id: book.id,
+                status: book.status,
+                title: book.book.title,
+                subtitle: book.book.subtitle,
+                authors: book.book.authors,
+                description: book.book.description,
+                image: book.book.image,
+                requests: book.loanRequests.map(bookRequest => bookRequest)
+            };
+        });
+    })
+    .then(books => {
+        return res.json(books);
+    })
+    .catch(error => {
+        console.log(error);
+        return res.status(500).json({error: error.toString()});
+    });
+}
+
+export function getUserRequests(req, res) {
+    // Bail early if the person making this request is anybody other than the user that is requested
+    if (req.session.user != String(req.params.username)) {
+        return res.status(403).json({error: "You do not have permissions to view this information."});
+    }
+
+    models.User.findOne({where: {username: String(req.params.username)}})
+    .then(user => {
+        let modelInclusions = [
+            {model: models.User, attributes: ["username", "firstName", "lastName", "city", "state"]},
+            {model: models.BookCopy, include: [{ model: models.Book, attributes: ["title", "subtitle", "authors", "description", "image"]}]}
+        ];
+        let findRequestsPromise = models.TradeRequest.find({where: {userId: user.id}, include: modelInclusions});
+        return Promise.all([user, findRequestsPromise]);
+    })
+    .then(([user, requests]) => {
+        return res.json(requests);
+    })
+    .catch(error => res.status(error.code).json(error.message));
+};
+
 export function getUserRecords(req, res) {
     models.User.findOne({ where: {username: String(req.params.username)} })
     .then(user => models.TradeRecord.find({where: {id: user.id}}))
@@ -161,5 +182,4 @@ export function getUserRecords(req, res) {
         return res.json(records);
     })
     .catch(error => res.status(error.code).json(error.message));
-    return res.json({message: "Not implemented"});
 };
